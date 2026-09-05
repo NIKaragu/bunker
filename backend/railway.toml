@@ -1,0 +1,10 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "pnpm --filter @bunker/backend... build"
+
+[deploy]
+startCommand = "pnpm --filter @bunker/backend start"
+healthcheckPath = "/health/ready"
+healthcheckTimeout = 20
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1

@@ -1,14 +1,14 @@
 # Прийняті рішення
 
-- 2026-09-05: поточний етап — ініціалізація та перевірка лупу. Реалізація гри, дослідження PDF і деплой ще не виконувалися.
-- На прохання власника використовуємо `frontend/` і `backend/` замість `apps/web` і `apps/server`. Shared contracts та pure game engine залишаються у `packages/`.
-- За уточненням власника агенти спільні для всього проєкту: один каталог `.codex/agents/`, без копій у компонентах. «Глобальний» тут означає проєктний; особисті налаштування всіх інших репозиторіїв не змінюємо.
-- Root, frontend і backend мають окремі `loop.config.json`; усі шляхи в них відносні до кореня Git. Корінь відповідає за міжкомпонентні зміни.
-- Оркестратор використовує native subagents. CLI entrypoint запускає одну інтерактивну сесію Codex, що виконує той самий skill. У вже відкритій сесії застосовується `prepare`, без вкладеного Codex.
-- Runtime лупу написаний на Node без зовнішніх залежностей. PowerShell і Bash — тонкі оболонки. Для його перевірки не потрібні npm install, API key або платний API harness.
-- 2026-09-05: усі spawned project agents за замовчуванням використовують `gpt-5.6-sol` із `medium` reasoning effort через спільний `[agents]` у `.codex/config.toml`. Окремі role TOML не дублюють модель; explicit spawn override має вищий пріоритет. Головний агент поточної сесії визначається клієнтом і не перемикається project default-ом. Ліміт — три активні виконавці та головний агент; це спільний бюджет обох компонентів.
-- Первинний bootstrap конфігурацій виконує root. Надалі зміни агентів, інструкцій, workspace config і lockfile дозволені тільки у серійній root/tooling phase з exact paths. Gate configuration фіксується на початку run; її зміни набувають чинності для наступного run і не послаблюють поточні перевірки.
-- `setup` gates сертифікують лише інфраструктуру лупу. `delivery` gates вимагають справжніх команд продукту; їх відсутність означає blocker. Немає порожніх успішних test/build scripts.
-- Очікуване падіння acceptance assertion у tests-first не є фінальним quality gate. Tester надає точну команду, назву тесту і assertion; Reviewer перевіряє доказ. Помилки runner/import/compile не дозволяють перейти далі як «очікуваний red».
-- Handoff — перевірюваний запис для кооперативних агентів, а не криптографічний доказ ідентичності. Runtime перевіряє фази, paths і content hashes; root відповідає за правдивість agentId, наданих джерел і Tester evidence.
-- Git commit, push та deploy не автоматизуються цим скриптом. Після успішного завершення root може зробити атомарний commit у межах дозволеної задачі.
+- 2026-09-05: реалізується повний MVP з `BUNKER_CODEX_MASTER_PROMPT.md` через bounded multi-agent delivery loop.
+- Каталоги `frontend/` і `backend/` замінюють запропоновані `apps/web`/`apps/server`; shared contracts і pure engine лишаються у `packages/`.
+- Єдиний активний rules profile — `bunker-party-v1`: редакція 3.3 плюс рівно чотири overrides `APR-*`. Інших house rules немає.
+- Publisher PDF link зараз повертає authentication HTML/403. До отримання PDF-байтів checksum і page locators мають статус unavailable/blocked; HTML hash не записується як PDF hash.
+- Runtime/toolchain pin: Node 24.20.0, pnpm 12.3.4; stable versions, committed lockfile.
+- Backend server-authoritative; game engine pure і deterministic з injected clock/random. Zustand зберігає лише client/UI state.
+- MVP storage in-memory, один Railway instance без autoscaling. Restart/deploy втрачає sessions, rooms і games; це прийняте обмеження.
+- Reconnect grace — 60 с; після grace profile/token видаляються, але in-game characters не зникають і переходять під control іншого participant.
+- Custom packs зберігаються локально в браузері, проходять Zod validation і snapshot-яться в game. Built-in data — оригінальний bilingual placeholder; copyrighted card datasets/assets не включаються.
+- Frontend deployment target — Vercel із root `frontend/`; backend — Railway із repo root, healthcheck `/health/ready`, одна replica.
+- Deployment credentials відсутні у workspace: конфіг і manual commands готові, live deployment/URL лишається зовнішнім blocker без вигаданого success.
+- Loop не робить commit/push/deploy автоматично. Reviewer має максимум одну відмову для поточного delivery run.

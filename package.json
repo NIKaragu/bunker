@@ -2,11 +2,34 @@
   "name": "bunker",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": "24.20.0",
+    "pnpm": "12.3.4"
+  },
   "scripts": {
+    "dev": "node scripts/dev.mjs",
     "loop": "node scripts/dev-loop.mjs",
     "check:setup": "node scripts/check-setup.mjs",
     "test:loop": "node --test scripts/tests/dev-loop.test.mjs",
-    "verify:setup": "node scripts/check-setup.mjs && node --test scripts/tests/dev-loop.test.mjs"
+    "verify:setup": "node scripts/check-setup.mjs && node --test scripts/tests/dev-loop.test.mjs",
+    "format": "prettier --write . --ignore-path .gitignore",
+    "format:check": "prettier --check . --ignore-path .gitignore",
+    "lint": "pnpm -r --filter=!bunker --if-present lint",
+    "typecheck": "pnpm -r --filter=!bunker --if-present typecheck",
+    "test": "pnpm test:loop && pnpm -r --filter=!bunker --if-present test",
+    "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
+    "build": "pnpm -r --filter=!bunker --if-present build",
+    "audit:rules": "node scripts/rules-audit.mjs",
+    "audit:dependencies": "pnpm audit --prod --audit-level high",
+    "smoke": "node scripts/smoke.mjs",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "eslint": "10.10.0",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
   }
 }

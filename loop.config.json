@@ -13,6 +13,7 @@
     "package.json",
     "pnpm-workspace.yaml",
     "pnpm-lock.yaml",
+    ".env.example",
     ".codex/",
     ".agents/",
     ".gitignore",
@@ -35,61 +36,51 @@
     "packages/game-engine/tests/acceptance/",
     "tests/acceptance/"
   ],
-  "maxReviewIterations": 3,
-  "gateTimeoutMs": 180000,
+  "maxReviewIterations": 2,
+  "gateTimeoutMs": 600000,
   "profiles": {
     "setup": [
       {
         "id": "setup-structure",
-        "command": [
-          "node",
-          "scripts/check-setup.mjs"
-        ]
+        "command": ["node", "scripts/check-setup.mjs"]
       },
       {
         "id": "loop-tests",
-        "command": [
-          "node",
-          "--test",
-          "scripts/tests/dev-loop.test.mjs"
-        ]
+        "command": ["node", "--test", "scripts/tests/dev-loop.test.mjs"]
       }
     ],
     "delivery": [
       {
+        "id": "workspace-verify",
+        "command": ["node", "scripts/package-gate.mjs", ".", "verify"]
+      },
+      {
         "id": "frontend-verify",
-        "command": [
-          "node",
-          "scripts/package-gate.mjs",
-          "frontend",
-          "verify"
-        ]
+        "command": ["node", "scripts/package-gate.mjs", "frontend", "verify"]
       },
       {
         "id": "backend-verify",
-        "command": [
-          "node",
-          "scripts/package-gate.mjs",
-          "backend",
-          "verify"
-        ]
+        "command": ["node", "scripts/package-gate.mjs", "backend", "verify"]
       },
       {
         "id": "multiplayer-e2e",
-        "command": [
-          "node",
-          "scripts/package-gate.mjs",
-          ".",
-          "test:e2e"
-        ]
+        "command": ["node", "scripts/package-gate.mjs", ".", "test:e2e"]
       },
       {
         "id": "rules-audit",
+        "command": ["node", "scripts/package-gate.mjs", ".", "audit:rules"]
+      },
+      {
+        "id": "production-smoke",
+        "command": ["node", "scripts/package-gate.mjs", ".", "smoke"]
+      },
+      {
+        "id": "dependency-audit",
         "command": [
           "node",
           "scripts/package-gate.mjs",
           ".",
-          "audit:rules"
+          "audit:dependencies"
         ]
       }
     ]
