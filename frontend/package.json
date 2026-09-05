@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:2": "NEXT_DIST_DIR=.next-3001 next dev -p 3001",
+    "prebuild": "tsc -p tsconfig.build.json",
     "build": "next build",
     "start": "next start",
     "lint": "eslint src --max-warnings 0",
