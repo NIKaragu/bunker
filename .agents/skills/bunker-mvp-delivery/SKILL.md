@@ -11,6 +11,8 @@ In this session run `node scripts/dev-loop.mjs prepare --scope <scope> --slice <
 
 Follow the printed task packet. Use native spawn/delegation for atomic work; if a runtime cannot select a named custom agent, explicitly read and supply that role's `.codex/agents/<role>.toml` instructions and report the permission limitation. Do not simulate seven agents by running seven shell prompts. Do not recursively launch this skill inside workers.
 
+Conserve context in every phase. Start from the task packet's exact paths and nearest governing instructions. Do not recursively enumerate, search, or read the repository, and do not preload both components. Open one additional named path only when an acceptance criterion, direct dependency, shared contract, or observed command result shows it is needed. Include each expanded path and its reason in the handoff.
+
 Complete research (or justified evidence reuse), plan, serial root tooling if applicable, contracts, tests, implementation, review and finalize through `advance --handoff <file>`. Each handoff names the actual agent, role, task ID, phase, findings and changed files. See the exact format in `docs/DEV_LOOP.md`. Workers return data; root validates and records it. Root freezes contracts before writers start. For multiple implementation workers attach contributions with each actual agent ID, role and nonoverlapping changed files.
 
 Use separate worktrees for parallel writers; run state belongs to the integration worktree. Dispatch only after a contract checkpoint; integrate one result at a time and validate its paths against the task. For simple slices use sequential writers. All agent roles have project-wide context; scope-specific file permissions remain narrow.

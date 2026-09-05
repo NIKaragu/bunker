@@ -174,7 +174,7 @@ export function advanceState(state, config, handoff, current) {
   return next;
 }
 
-function packet(state, config) {
+export function packet(state, config) {
   return {
     taskId: state.taskId, goal: state.goal, phase: state.phase, role: roleFor(state, config),
     implementationRoles: state.scope === 'root' ? ['frontend-developer', 'backend-developer'] : [config.agents.developer],
@@ -182,7 +182,7 @@ function packet(state, config) {
     maxReviewIterations: state.maxReviewIterations, reviewIterations: state.reviewIterations,
     contractFingerprint: state.contractFingerprint, plan: state.plan, findings: state.findings, blocked: state.blocked,
     gates: state.gates ? { passed: state.gates.passed, results: state.gates.results } : null,
-    instructions: 'Use native Codex subagents and .agents/skills/bunker-mvp-delivery/SKILL.md. Read the shared .codex/agents role instructions and both component AGENTS.md files. One atomic task per worker. Return a handoff to the root. Root records advance/check; workers do not mutate loop state. Never start another orchestrator from this session.'
+    instructions: 'Use native Codex subagents and .agents/skills/bunker-mvp-delivery/SKILL.md. Start with this task packet, its exact plan paths, the selected shared role instructions, and only the nearest governing AGENTS.md. Do not recursively inspect the repository or preload both components. Expand inspection one named path at a time only when an acceptance criterion, direct dependency, shared contract, or observed command evidence requires it; record every added path and reason in the handoff. One atomic task per worker. Root records advance/check; workers do not mutate loop state or start another orchestrator.'
   };
 }
 
