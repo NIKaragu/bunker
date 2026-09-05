@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "scope": "backend",
+  "cwd": "backend",
+  "ownedPaths": [
+    "backend/",
+    "packages/game-engine/"
+  ],
+  "testPaths": [
+    "backend/tests/",
+    "packages/game-engine/tests/"
+  ],
+  "agents": {
+    "developer": "backend-developer"
+  },
+  "acceptancePaths": [
+    "frontend/tests/acceptance/",
+    "backend/tests/acceptance/",
+    "packages/game-engine/tests/acceptance/",
+    "tests/acceptance/"
+  ],
+  "maxReviewIterations": 3,
+  "gateTimeoutMs": 180000,
+  "profiles": {
+    "delivery": [
+      {
+        "id": "backend-lint",
+        "command": [
+          "node",
+          "scripts/package-gate.mjs",
+          "backend",
+          "lint"
+        ]
+      },
+      {
+        "id": "backend-typecheck",
+        "command": [
+          "node",
+          "scripts/package-gate.mjs",
+          "backend",
+          "typecheck"
+        ]
+      },
+      {
+        "id": "backend-test",
+        "command": [
+          "node",
+          "scripts/package-gate.mjs",
+          "backend",
+          "test"
+        ]
+      },
+      {
+        "id": "backend-build",
+        "command": [
+          "node",
+          "scripts/package-gate.mjs",
+          "backend",
+          "build"
+        ]
+      }
+    ]
+  }
+}

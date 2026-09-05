@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "scope": "root",
+  "cwd": ".",
+  "ownedPaths": [
+    "frontend/",
+    "backend/",
+    "packages/",
+    "scripts/",
+    "docs/",
+    "AGENTS.md",
+    "README.md",
+    "package.json",
+    "pnpm-workspace.yaml",
+    "pnpm-lock.yaml",
+    ".codex/",
+    ".agents/",
+    ".gitignore",
+    ".gitattributes",
+    "loop.config.json"
+  ],
+  "testPaths": [
+    "frontend/tests/",
+    "backend/tests/",
+    "packages/game-engine/tests/",
+    "scripts/tests/",
+    "tests/"
+  ],
+  "agents": {
+    "developer": "backend-developer"
+  },
+  "acceptancePaths": [
+    "frontend/tests/acceptance/",
+    "backend/tests/acceptance/",
+    "packages/game-engine/tests/acceptance/",
+    "tests/acceptance/"
+  ],
+  "maxReviewIterations": 3,
+  "gateTimeoutMs": 180000,
+  "profiles": {
+    "setup": [
+      {
+        "id": "setup-structure",
+        "command": [
+          "node",
+          "scripts/check-setup.mjs"
+        ]
+      },
+      {
+        "id": "loop-tests",
+        "command": [
+          "node",
+          "--test",
+          "scripts/tests/dev-loop.test.mjs"
+        ]
+      }
+    ],
+    "delivery": [
+      {
+        "id": "frontend-verify",
+        "command": [
+          "node",
+          "scripts/package-gate.mjs",
+          "frontend",
+          "verify"
+        ]
+      },
+      {
+        "id": "backend-verify",
+        "command": [
+          "node",
+          "scripts/package-gate.mjs",
+          "backend",
+          "verify"
+        ]
+      },
+      {
+        "id": "multiplayer-e2e",
+        "command": [
+          "node",
+          "scripts/package-gate.mjs",
+          ".",
+          "test:e2e"
+        ]
+      },
+      {
+        "id": "rules-audit",
+        "command": [
+          "node",
+          "scripts/package-gate.mjs",
+          ".",
+          "audit:rules"
+        ]
+      }
+    ]
+  }
+}

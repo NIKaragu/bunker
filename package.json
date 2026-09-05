@@ -1,0 +1,12 @@
+{
+  "name": "bunker",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "loop": "node scripts/dev-loop.mjs",
+    "check:setup": "node scripts/check-setup.mjs",
+    "test:loop": "node --test scripts/tests/dev-loop.test.mjs",
+    "verify:setup": "node scripts/check-setup.mjs && node --test scripts/tests/dev-loop.test.mjs"
+  }
+}
