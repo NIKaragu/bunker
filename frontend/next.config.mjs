@@ -10,7 +10,7 @@ if (process.env.NODE_ENV === "production" && !backendUrl) {
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  output: "standalone",
+  // output: "standalone",
   transpilePackages: ["@bunker/contracts"],
   distDir: process.env.NEXT_DIST_DIR || ".next",
 };
