@@ -1,4 +1,6 @@
-# Shared project configuration. Inherit the selected parent model and effort.
+# Shared project configuration for every spawned project agent.
 [agents]
 enabled = true
 max_concurrent_threads_per_session = 3
+default_subagent_model = "gpt-5.6-sol"
+default_subagent_reasoning_effort = "medium"

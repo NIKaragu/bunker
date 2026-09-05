@@ -14,6 +14,8 @@
 | `scripts/dev-loop.cmd --help` | exit 0 |
 | Git Bash `scripts/dev-loop.sh --help` | exit 0 |
 
+Поточний setup checker також вимагає exact project defaults `gpt-5.6-sol` і `medium` та забороняє model overrides у семи role TOML. Офіційна документація підтверджує цей model ID, `medium` effort і поля `[agents].default_subagent_model` / `default_subagent_reasoning_effort`.
+
 Тести перевіряють: dry-run без побічних ефектів; збереження сторонніх файлів; повний цикл із реальним expected-red assertion; failed gates; timeout і відсутню команду; заборону змін acceptance tests; stale evidence; resume часткової реалізації та контракту; заборону пропускати фази; незалежність review від авторів; attribution contributors; серійні tooling changes; ізоляцію scope; блокування конкурентних запусків; відсутні product gates; читання завершеного стану після commit.
 
 ## Демо зі справжніми native subagents

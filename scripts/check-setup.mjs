@@ -8,6 +8,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const roles = ['researcher', 'planner', 'tester', 'frontend-developer', 'backend-developer', 'reviewer', 'finalizer'];
 const required = ['AGENTS.md', 'README.md', 'docs/DEV_LOOP.md', 'docs/DECISIONS.md', '.codex/config.toml', '.agents/skills/bunker-mvp-delivery/SKILL.md', 'scripts/dev-loop.cmd', 'scripts/dev-loop.ps1', 'scripts/dev-loop.sh'];
 for (const file of required) assert.ok(fs.existsSync(path.join(root, file)), `Missing ${file}`);
+const projectConfig = fs.readFileSync(path.join(root, '.codex/config.toml'), 'utf8');
+assert.match(projectConfig, /^default_subagent_model\s*=\s*"gpt-5\.6-sol"\s*$/m, 'All project agents must default to gpt-5.6-sol');
+assert.match(projectConfig, /^default_subagent_reasoning_effort\s*=\s*"medium"\s*$/m, 'All project agents must default to medium reasoning');
 for (const role of roles) {
   const text = fs.readFileSync(path.join(root, '.codex/agents', `${role}.toml`), 'utf8');
   assert.ok(text.includes(`name = "${role}"`) && text.includes('description = ') && text.includes('developer_instructions = """'), `Incomplete agent ${role}`);
@@ -29,4 +32,4 @@ for (const file of ['scripts/dev-loop.mjs', 'scripts/package-gate.mjs', 'scripts
   const result = spawnSync(process.execPath, ['--check', path.join(root, file)], { encoding: 'utf8', windowsHide: true });
   assert.equal(result.status, 0, `${file}: ${result.stderr}`);
 }
-console.log('PASS: shared agent catalog, three scope configurations, skill discovery and script syntax');
+console.log('PASS: shared gpt-5.6-sol/medium agent defaults, agent catalog, three scope configurations, skill discovery and script syntax');
