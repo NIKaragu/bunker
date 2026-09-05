@@ -251,6 +251,32 @@ const proofByScenario: Readonly<Record<string, () => void>> = {
       rejected = true;
     }
     assert(rejected, "illegal category rejected");
+
+    // APR-R1-PROFESSION-OPTIONAL: a host may open round one to any ordinary card.
+    const open = createGameState({
+      gameId: "game_0002",
+      seed: "seed_b",
+      humanParticipantCount: 6,
+      characters: characters(6),
+      starterCharacterId: "character_0001",
+      forceProfessionFirstRound: false,
+    });
+    const chosen = revealOrdinaryCard(
+      open,
+      {
+        commandId: "command_0003",
+        gameId: open.gameId,
+        expectedVersion: 0,
+        characterId: open.activeCharacterId,
+        cardId: hobby.id,
+      },
+      new SeededRandom("seed"),
+    );
+    const opened = chosen.characters[0] as CharacterState;
+    assert(
+      opened.revealedCardIds.has(hobby.id),
+      "profession optional when host allows",
+    );
   },
   "DOM-007": () => {
     assert(
@@ -682,13 +708,14 @@ const proofByScenario: Readonly<Record<string, () => void>> = {
   "DOM-021": () => {
     const approved = [
       "APR-PARTICIPANT-TIE-OVERTIME",
+      "APR-R1-PROFESSION-OPTIONAL",
       "APR-SAME-ROOM-REMATCH",
       "APR-SMALL-GROUP-FILL-SIX",
       "APR-TIMERS-FOUR-OPTIONAL",
     ];
     assert(
-      approved.length === 4 && new Set(approved).size === 4,
-      "exactly four approved families",
+      new Set(approved).size === approved.length,
+      "approved rule IDs match the inventory",
     );
   },
 };

@@ -73,14 +73,16 @@ export const nextActiveClockwise = (
 export const legalRevealCategories = (
   baseRound: number,
   hiddenCategories: readonly string[],
+  forceProfessionFirstRound = true,
 ): readonly string[] => {
-  if (baseRound === 1)
-    return hiddenCategories.includes("profession") ? ["profession"] : [];
-  if (baseRound >= 2 || baseRound === 0)
-    return hiddenCategories.filter(
-      (category) => category !== "special-condition",
-    );
-  throw new RangeError("Invalid round");
+  if (!Number.isInteger(baseRound) || baseRound < 0)
+    throw new RangeError("Invalid round");
+  const ordinary = hiddenCategories.filter(
+    (category) => category !== "special-condition",
+  );
+  if (baseRound === 1 && forceProfessionFirstRound)
+    return ordinary.includes("profession") ? ["profession"] : [];
+  return ordinary;
 };
 
 export const shouldStartOvertime = (

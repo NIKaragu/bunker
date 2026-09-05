@@ -27,6 +27,8 @@ export const deadlineSetSchema = z.object({
 export const gameSettingsSchema = z.object({
   minParticipants: z.literal(3).default(3), maxParticipants: z.number().int().min(3).max(15).default(15),
   fillToSix: z.boolean().default(false), mode: gameModeSchema.default("base"),
+  /** Official 3.3 forces Profession in round 1; a host may open round 1 to any card. */
+  forceProfessionFirstRound: z.boolean().default(true),
   finalGoal: finalGoalSchema.default("salvation"), timers: timerSettingsSchema,
   tiePolicy: z.literal("participant-count-v1").default("participant-count-v1"),
   overtimePolicy: z.literal("single-attempt-until-capacity-v1").default("single-attempt-until-capacity-v1"),

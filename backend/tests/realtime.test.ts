@@ -2,7 +2,7 @@ import { createServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { io as createClient, type Socket as ClientSocket } from "socket.io-client";
 import { afterEach, describe, expect, test } from "vitest";
-import { PROTOCOL_VERSION } from "../../packages/contracts/src/index.js";
+import { BUNKER_PARTY_CHARACTER_DECKS, PROTOCOL_VERSION } from "../../packages/contracts/src/index.js";
 import { createApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import { attachRealtime, detachRealtime } from "../src/realtime.js";
@@ -19,7 +19,7 @@ const settings = {
   tiePolicy: "participant-count-v1" as const,
   overtimePolicy: "single-attempt-until-capacity-v1" as const,
   selectedPackIds: ["pack_general_v1"],
-  characterDecks: ["profession", "biology", "health", "hobby", "baggage", "fact"]
+  characterDecks: [...BUNKER_PARTY_CHARACTER_DECKS]
 };
 const profile = (index: number) => ({ nickname: `Realtime Player ${index}`, locale: "en" as const });
 
@@ -27,6 +27,7 @@ type Session = { sessionId: string; reconnectToken: string; profile: { participa
 type Snapshot = {
   roomId: string;
   version: number;
+  status: string;
   participants: Array<{ participantId: string; ready: boolean; connected: boolean }>;
   viewerProfile: { participantId: string };
 };
@@ -129,6 +130,31 @@ describe("realtime room synchronization", () => {
     expect((await hostReady).participants).toHaveLength(2);
     expect((await guestReady).participants).toHaveLength(2);
     expect(initialHost.participants).toHaveLength(1);
+  });
+
+  test("acknowledges the last readiness and deals the table to every client", async () => {
+    const { service, connect } = await setup();
+    const players = [4, 5, 6].map((index) => service.createSession(profile(index)) as Session);
+    const room = service.createRoom(players[0]!.sessionId, { name: "Auto Start Room", settings, customPacks: [], adultContentConfirmed: false }) as Snapshot;
+    for (const player of players.slice(1)) service.joinRoom(player.sessionId, room.roomId);
+    const sockets: ClientSocket[] = [];
+    for (const player of players) sockets.push(await connect(player.reconnectToken));
+
+    const dealt = sockets.map((socket) => waitForSnapshot(socket, (snapshot) => snapshot.status === "in-game"));
+    for (const [index, socket] of sockets.entries()) {
+      const view = service.currentRoom(players[index]!.sessionId) as Snapshot;
+      const ack = await socket.emitWithAck("room:set-ready", {
+        protocolVersion: PROTOCOL_VERSION,
+        commandId: `auto_start_ready_${index}`,
+        roomId: room.roomId,
+        expectedVersion: view.version,
+        ready: true
+      }) as { ok: boolean; error?: { code: string } };
+      expect(ack.error?.code).toBeUndefined();
+      expect(ack.ok).toBe(true);
+    }
+
+    for (const snapshot of await Promise.all(dealt)) expect(snapshot.status).toBe("in-game");
   });
 
   test("keeps a reloaded session alive until its last overlapping socket disconnects", async () => {

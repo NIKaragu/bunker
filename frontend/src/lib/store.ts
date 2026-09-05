@@ -101,14 +101,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearSession: () => {
     bootstrapGeneration += 1;
     removeLocal("session");
-    set({ hydrated: true, bootstrap: "ready", session: null, room: null, connection: "expired" });
+    set({ hydrated: true, bootstrap: "ready", session: null, room: null, connection: "expired", notice: null });
   },
 }));
 
+// `expectedVersion` guards the room record (docs/REALTIME_PROTOCOL.md); `gameId` is what guards game identity.
 export const commandMeta = (room: RoomSnapshot, commandId = crypto.randomUUID().replaceAll("-", "")) => ({
   protocolVersion: "bunker-party-v1" as const,
   commandId,
   roomId: room.roomId,
   gameId: room.game?.publicState.gameId,
-  expectedVersion: room.game?.publicState.version ?? room.version,
+  expectedVersion: room.version,
 });

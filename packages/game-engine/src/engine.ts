@@ -47,6 +47,8 @@ export type GameState = Readonly<{
   characters: readonly CharacterState[];
   revealedPairIndexes: ReadonlySet<number>;
   schedule: readonly number[];
+  /** Frozen at deal time: does round 1 force Profession, or may any card open it? */
+  forceProfessionFirstRound: boolean;
   processedCommands: ReadonlyMap<string, Readonly<{ version: number }>>;
   audit: readonly string[];
 }>;
@@ -64,6 +66,7 @@ export const createGameState = (
     humanParticipantCount: number;
     characters: readonly CharacterState[];
     starterCharacterId: string;
+    forceProfessionFirstRound?: boolean;
   }>,
 ): GameState => ({
   gameId: input.gameId,
@@ -80,6 +83,7 @@ export const createGameState = (
   characters: input.characters,
   revealedPairIndexes: new Set(),
   schedule: expulsionSchedule(input.characters.length),
+  forceProfessionFirstRound: input.forceProfessionFirstRound ?? true,
   processedCommands: new Map(),
   audit: [],
 });
@@ -135,6 +139,7 @@ export const revealOrdinaryCard = (
   const categories = legalRevealCategories(
     state.phase === "round-selection" ? state.baseRound : 0,
     hidden.map((card) => card.category ?? ""),
+    state.forceProfessionFirstRound,
   );
   const legal = hidden.filter(
     (card) =>
@@ -256,6 +261,7 @@ export const createRematch = (
     humanParticipantCount: state.humanParticipantCountAtGameStart,
     characters,
     starterCharacterId: characters[0]?.id ?? "",
+    forceProfessionFirstRound: state.forceProfessionFirstRound,
   });
 };
 

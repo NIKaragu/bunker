@@ -7,11 +7,19 @@ import { t } from "@/lib/i18n";
 import { RulesDialog } from "./RulesDialog";
 
 export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) {
-  const { hydrated, bootstrap, hydrate, locale, setLocale, notice, connection } = useAppStore();
+  const { hydrated, bootstrap, hydrate, clearSession, locale, setLocale, notice, connection } = useAppStore();
   const [rulesOpen, setRulesOpen] = useState(false);
   useEffect(() => { void hydrate(); }, [hydrate]);
   useEffect(() => { document.documentElement.lang = locale; }, [locale]);
-  if (!hydrated) return <main className="shell"><section className="card stack"><p className="muted">{bootstrap === "error" ? "Could not restore the session." : "Restoring session…"}</p>{bootstrap === "error" && <button onClick={() => void hydrate()}>Retry</button>}</section></main>;
+  if (!hydrated) return <main className="shell"><section className="card stack">
+    <p className="muted">{bootstrap === "error" ? (locale === "uk" ? "Не вдалося відновити сесію." : "Could not restore the session.") : (locale === "uk" ? "Відновлюємо сесію…" : "Restoring session…")}</p>
+    {bootstrap === "error" && notice && <p className="status-bad" role="alert">{notice}</p>}
+    {bootstrap === "error" && <div className="row">
+      <button className="primary" onClick={() => void hydrate()}>{locale === "uk" ? "Спробувати ще раз" : "Retry"}</button>
+      {/* Without this the stored token can wedge the app: restore keeps failing and nothing else renders. */}
+      <button onClick={clearSession}>{locale === "uk" ? "Почати заново" : "Start over"}</button>
+    </div>}
+  </section></main>;
   return (
     <main className="shell">
       <header className="topbar">

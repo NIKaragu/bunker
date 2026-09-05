@@ -1,4 +1,5 @@
 import {
+  type ErrorCode,
   packValidationResponseSchema,
   profileResponseSchema,
   roomResponseSchema,
@@ -16,8 +17,11 @@ export class ApiFailure extends Error {
   }
 }
 
+/** Codes that mean the stored token is worthless, so the session must be dropped, not retried. */
+const TERMINAL_SESSION_CODES: readonly ErrorCode[] = ["SESSION_EXPIRED", "RECONNECT_TOKEN_INVALID", "AUTH_REQUIRED"];
+
 export const isTerminalSessionCode = (code: string): boolean =>
-  code.startsWith("SESSION_") || ["INVALID_RECONNECT_TOKEN", "UNAUTHORIZED", "AUTHENTICATION_REQUIRED"].includes(code);
+  (TERMINAL_SESSION_CODES as readonly string[]).includes(code);
 
 export const isTerminalSessionFailure = (reason: unknown): boolean =>
   reason instanceof ApiFailure && isTerminalSessionCode(reason.code);

@@ -34,11 +34,12 @@ describe("acceptance manifest integrity", () => {
     expect(acceptanceScenarios.every(({ behavior, assertions }) => behavior.length > 15 && assertions.length > 0)).toBe(true);
   });
 
-  test("covers all required rule families and exactly four approved overrides", () => {
+  test("covers all required rule families and exactly the approved overrides", () => {
     const rules = new Set(acceptanceScenarios.flatMap(({ ruleIds }) => ruleIds));
     for (const ruleId of REQUIRED_RULE_IDS) expect(rules.has(ruleId)).toBe(true);
     expect([...rules].filter((ruleId) => ruleId.startsWith("APR-")).sort()).toEqual([
       "APR-PARTICIPANT-TIE-OVERTIME",
+      "APR-R1-PROFESSION-OPTIONAL",
       "APR-SAME-ROOM-REMATCH",
       "APR-SMALL-GROUP-FILL-SIX",
       "APR-TIMERS-FOUR-OPTIONAL",

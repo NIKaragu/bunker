@@ -8,18 +8,18 @@ Nickname нормалізується й резервується на час re
 
 ## Конфігурація backend
 
-| Variable                  |                 Default | Призначення                                        |
-| ------------------------- | ----------------------: | -------------------------------------------------- |
-| `PORT`                    |                  `4000` | Railway надає public listen port                   |
-| `CORS_ORIGINS`            | `http://localhost:3000` | comma-separated explicit allowlist; `*` заборонено |
-| `MAX_ROOMS`               |                   `100` | rooms на process                                   |
-| `MAX_SPECTATORS_PER_ROOM` |                    `40` | spectators на room                                 |
-| `MAX_PAYLOAD_BYTES`       |               `1048576` | Express JSON limit                                 |
-| `MAX_COMMANDS_PER_MINUTE` |                   `180` | per-session intent rate                            |
-| `SESSION_GRACE_MS`        |                 `60000` | reconnect grace                                    |
-| `EMPTY_ROOM_TTL_MS`       |                 `60000` | cleanup empty rooms                                |
-| `SESSION_TTL_MS`          |              `86400000` | anonymous session TTL                              |
-| `TRUST_PROXY`             |                 `false` | `true` лише за trusted platform proxy              |
+| Variable                  |              Default | Призначення                                                           |
+| ------------------------- | -------------------: | --------------------------------------------------------------------- |
+| `PORT`                    |               `4000` | Railway надає public listen port                                      |
+| `CORS_ORIGINS`            | `localhost:3000/1/2` | comma-separated explicit allowlist; лише bare origins, `*` заборонено |
+| `MAX_ROOMS`               |                `100` | rooms на process                                                      |
+| `MAX_SPECTATORS_PER_ROOM` |                 `40` | spectators на room                                                    |
+| `MAX_PAYLOAD_BYTES`       |            `1048576` | Express JSON limit                                                    |
+| `MAX_COMMANDS_PER_MINUTE` |                `180` | per-session intent rate                                               |
+| `SESSION_GRACE_MS`        |              `60000` | reconnect grace                                                       |
+| `EMPTY_ROOM_TTL_MS`       |              `60000` | cleanup empty rooms                                                   |
+| `SESSION_TTL_MS`          |           `86400000` | anonymous session TTL                                                 |
+| `TRUST_PROXY`             |              `false` | `true` лише за trusted platform proxy                                 |
 
 Frontend потребує `NEXT_PUBLIC_BACKEND_URL=https://<backend-domain>`. Це public origin, не secret. Secrets у repo/chat не додаються.
 

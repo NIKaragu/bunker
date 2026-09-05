@@ -1,7 +1,7 @@
 .bunker-loop/
 .worktrees/
 node_modules/
-.next/
+.next*/
 dist/
 coverage/
 playwright-report/

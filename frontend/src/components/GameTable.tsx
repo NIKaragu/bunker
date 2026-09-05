@@ -26,6 +26,35 @@ const phaseLabels: Record<string, { uk: string; en: string }> = {
   complete: { uk: "Результат", en: "Result" },
 };
 
+const deckLabels: Record<string, { uk: string; en: string }> = {
+  profession: { uk: "Професія", en: "Profession" },
+  biology: { uk: "Біологія", en: "Biology" },
+  health: { uk: "Здоров’я", en: "Health" },
+  hobby: { uk: "Хобі", en: "Hobby" },
+  baggage: { uk: "Багаж", en: "Baggage" },
+  fact: { uk: "Факт", en: "Fact" },
+  superpower: { uk: "Суперсила", en: "Superpower" },
+  phobia: { uk: "Фобія", en: "Phobia" },
+  personality: { uk: "Характер", en: "Personality" },
+  "special-condition": { uk: "Особлива умова", en: "Special Condition" },
+  catastrophe: { uk: "Катастрофа", en: "Catastrophe" },
+  bunker: { uk: "Бункер", en: "Bunker" },
+  threat: { uk: "Загроза", en: "Threat" },
+};
+
+const statusLabels: Record<string, { uk: string; en: string }> = {
+  active: { uk: "у бункері", en: "in bunker" },
+  exiled: { uk: "вигнаний", en: "exiled" },
+  dead: { uk: "загинув", en: "dead" },
+  survivor: { uk: "вижив", en: "survivor" },
+};
+
+const label = (map: Record<string, { uk: string; en: string }>, key: string, locale: "uk" | "en"): string => map[key]?.[locale] ?? key;
+
+/** Names the deck a card comes from, so players never read a raw contract enum. */
+const deckLabel = (card: Pick<Card, "type"> & { category?: string }, locale: "uk" | "en"): string =>
+  label(deckLabels, card.type === "character" ? (card.category ?? "character") : card.type, locale);
+
 function useCountdown(deadline: string | null): string {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -40,7 +69,7 @@ function useCountdown(deadline: string | null): string {
 
 function CardDetail({ card, onClose }: { card: Card; onClose: () => void }) {
   const locale = useAppStore((state) => state.locale);
-  return <div className="dialog-backdrop" role="presentation"><section className="dialog stack" role="dialog" aria-modal="true" aria-labelledby="card-title"><div className="row between"><div><p className="eyebrow">{card.type}{"category" in card ? ` · ${card.category}` : ""}</p><h2 id="card-title">{pickLocalized(card.title, locale)}</h2></div><button autoFocus onClick={onClose}>×</button></div>{card.details && <p>{pickLocalized(card.details, locale)}</p>}<button onClick={onClose}>{locale === "uk" ? "Закрити" : "Close"}</button></section></div>;
+  return <div className="dialog-backdrop" role="presentation"><section className="dialog stack" role="dialog" aria-modal="true" aria-labelledby="card-title"><div className="row between"><div><p className="eyebrow">{deckLabel(card, locale)}</p><h2 id="card-title">{pickLocalized(card.title, locale)}</h2></div><button autoFocus onClick={onClose}>×</button></div>{card.details && <p>{pickLocalized(card.details, locale)}</p>}<button onClick={onClose}>{locale === "uk" ? "Закрити" : "Close"}</button></section></div>;
 }
 
 export function GameTable({ room }: { room: RoomSnapshot }) {
@@ -51,7 +80,7 @@ export function GameTable({ room }: { room: RoomSnapshot }) {
 function ActiveGameTable({ room, game }: { room: RoomSnapshot; game: NonNullable<RoomSnapshot["game"]> }) {
   const { locale, selectedCharacterId, selectCharacter, setNotice } = useAppStore();
   const [detail, setDetail] = useState<Card | null>(null);
-  const [voteTarget, setVoteTarget] = useState<string | null>(null);
+  const [voteDrafts, setVoteDrafts] = useState<Record<string, string>>({});
   const { publicState, viewer } = game;
   const privateState = viewer.role === "participant" ? viewer.privateState : null;
   const selectedHand = privateState?.controlledCharacters.find((hand) => hand.characterId === selectedCharacterId) ?? privateState?.controlledCharacters[0];
@@ -60,7 +89,19 @@ function ActiveGameTable({ room, game }: { room: RoomSnapshot; game: NonNullable
   const phase = phaseLabels[publicState.phase]?.[locale] ?? publicState.phase;
   const relevantDeadline = publicState.phase.includes("selection") ? publicState.deadlines.selection : publicState.phase.includes("speech") ? publicState.deadlines.speech : publicState.phase.includes("discussion") ? publicState.deadlines.discussion : publicState.phase.includes("voting") ? publicState.deadlines.voting : publicState.phase === "tie-defense" ? publicState.deadlines.tieDefense : null;
   const countdown = useCountdown(relevantDeadline);
-  const candidates = useMemo(() => publicState.characters.filter((character) => game.publicState.ballot?.candidates.includes(character.characterId)), [game.publicState.ballot?.candidates, publicState.characters]);
+  // A character never appears on its own ballot.
+  const candidates = useMemo(
+    () => publicState.characters.filter((character) => game.publicState.ballot?.candidates.includes(character.characterId) && character.characterId !== selectedHand?.characterId),
+    [game.publicState.ballot?.candidates, publicState.characters, selectedHand?.characterId],
+  );
+  const castVote = selectedHand?.votedForCharacterId ?? null;
+  const voteTarget = (selectedHand ? voteDrafts[selectedHand.characterId] : undefined) ?? castVote;
+  // Which decks the server is willing to accept from this character right now.
+  const revealableDecks = useMemo(() => {
+    const ids = (privateState?.legalActions ?? []).filter((action) => action.startsWith("game:reveal-card:")).map((action) => action.slice("game:reveal-card:".length));
+    const decks = ids.map((id) => selectedHand?.cards.find((card) => card.id === id)).filter((card) => card !== undefined).map((card) => deckLabel(card, locale));
+    return [...new Set(decks)];
+  }, [locale, privateState?.legalActions, selectedHand?.cards]);
 
   const command = async (name: Parameters<typeof realtime.command>[0], body: Record<string, unknown>, message: string) => {
     try {
@@ -81,7 +122,7 @@ function ActiveGameTable({ room, game }: { room: RoomSnapshot; game: NonNullable
       </header>
 
       <section aria-label={locale === "uk" ? "Порядок персонажів" : "Character order"}>
-        <div className="seat-strip">{publicState.characters.map((character) => <article className={`seat ${character.characterId === publicState.activeCharacterId ? "active" : ""} ${character.status === "exiled" ? "exiled" : ""}`} key={character.characterId}><div className="row between"><strong>#{character.seat + 1}</strong><span className="badge">{character.status}</span></div><p>{character.controller?.nickname ?? (locale === "uk" ? "Передано" : "Transferred")}</p><small className="muted">{character.revealedCards.length} {locale === "uk" ? "відкрито" : "revealed"} · {character.concealedCardCount} {locale === "uk" ? "приховано" : "hidden"}</small></article>)}</div>
+        <div className="seat-strip">{publicState.characters.map((character) => <article className={`seat ${character.characterId === publicState.activeCharacterId ? "active" : ""} ${character.status === "exiled" ? "exiled" : ""}`} key={character.characterId}><div className="row between"><strong>#{character.seat + 1}</strong><span className="badge">{label(statusLabels, character.status, locale)}</span></div><p>{character.controller?.nickname ?? (locale === "uk" ? "Передано" : "Transferred")}</p><small className="muted">{character.revealedCards.length} {locale === "uk" ? "відкрито" : "revealed"} · {character.concealedCardCount} {locale === "uk" ? "приховано" : "hidden"}</small></article>)}</div>
       </section>
 
       <div className="game-layout">
@@ -90,21 +131,33 @@ function ActiveGameTable({ room, game }: { room: RoomSnapshot; game: NonNullable
             <div className="row between"><h2>{locale === "uk" ? "Ваші персонажі" : "Your characters"}</h2><span className="badge">{viewer.role === "spectator" ? (locale === "uk" ? "Спостерігач" : "Spectator") : selectedPublic?.status ?? "active"}</span></div>
             {viewer.role === "spectator" ? <p className="muted">{locale === "uk" ? "Ви приєдналися після старту. Приховані карти й голосування недоступні." : "You joined after the start. Hidden cards and voting are unavailable."}</p> : <>
               <div className="hand-tabs" role="tablist">{privateState?.controlledCharacters.map((hand, index) => <button role="tab" aria-selected={hand.characterId === selectedHand?.characterId} key={hand.characterId} onClick={() => selectCharacter(hand.characterId)}>{locale === "uk" ? "Персонаж" : "Character"} {index + 1}<br /><small>{publicState.characters.find((item) => item.characterId === hand.characterId)?.status}</small></button>)}</div>
+              {revealableDecks.length > 0 && <p className="muted" role="status">{locale === "uk" ? "Цього раунду ви відкриваєте: " : "This round you may reveal: "}<strong>{revealableDecks.join(", ")}</strong></p>}
               <div className="cards">{selectedHand?.cards.map((card) => {
                 const revealed = selectedPublic?.revealedCards.some((item) => item.id === card.id);
-                return <article className="game-card button" key={card.id}><button className="ghost" onClick={() => setDetail(card)}><small>{"category" in card ? card.category : card.type}</small><strong>{pickLocalized(card.title, locale)}</strong></button><span className={revealed ? "status-good" : "muted"}>{revealed ? (locale === "uk" ? "Відкрито" : "Revealed") : (locale === "uk" ? "Приватна" : "Private")}</span>{!revealed && legal("reveal-card") && <button className="primary" onClick={() => void command("game:reveal-card", { characterId: selectedHand.characterId, cardId: card.id }, locale === "uk" ? "Карту відкрито" : "Card revealed")}>{locale === "uk" ? "Відкрити" : "Reveal"}</button>}</article>;
+                return <article className="game-card button" key={card.id}><button className="ghost" onClick={() => setDetail(card)}><small>{deckLabel(card, locale)}</small><strong>{pickLocalized(card.title, locale)}</strong></button><span className={revealed ? "status-good" : "muted"}>{revealed ? (locale === "uk" ? "Відкрито" : "Revealed") : (locale === "uk" ? "Приватна" : "Private")}</span>{!revealed && legal(`reveal-card:${card.id}`) && <button className="primary" onClick={() => void command("game:reveal-card", { characterId: selectedHand.characterId, cardId: card.id }, locale === "uk" ? "Карту відкрито" : "Card revealed")}>{locale === "uk" ? "Відкрити" : "Reveal"}</button>}</article>;
               })}</div>
             </>}
           </section>
 
           {publicState.finalState && <FinalProgress room={room} command={command} legal={legal("vote-usefulness")} />}
 
-          {publicState.ballot && viewer.role === "participant" && <section className="card stack"><h2>{publicState.phase === "runoff-voting" ? (locale === "uk" ? "Переголосування" : "Runoff") : locale === "uk" ? "Ваш таємний бюлетень" : "Your secret ballot"}</h2><p className="muted">{locale === "uk" ? "Вибір можна змінити до закриття. Утриматися не можна." : "You can change your choice before lock. Abstention is unavailable."}</p><div className="vote-list">{candidates.map((candidate) => <button aria-pressed={voteTarget === candidate.characterId} key={candidate.characterId} onClick={() => setVoteTarget(candidate.characterId)}>#{candidate.seat + 1} · {candidate.controller?.nickname}</button>)}</div><button className="primary" disabled={!voteTarget || !selectedHand || !legal("cast-vote")} onClick={() => selectedHand && voteTarget && void command("game:cast-vote", { voterCharacterId: selectedHand.characterId, targetCharacterId: voteTarget }, locale === "uk" ? "Голос збережено приватно" : "Vote saved privately")}>{locale === "uk" ? "Зберегти голос" : "Save vote"}</button></section>}
+          {publicState.ballot && viewer.role === "participant" && <section className="card stack">
+            <div className="row between">
+              <h2>{publicState.phase === "runoff-voting" ? (locale === "uk" ? "Переголосування" : "Runoff") : locale === "uk" ? "Ваш таємний бюлетень" : "Your secret ballot"}</h2>
+              <span className="badge" aria-live="polite">{locale === "uk" ? "Проголосували" : "Voted"} {publicState.ballot.castVoterIds.length}/{publicState.ballot.eligibleVoterIds.length}</span>
+            </div>
+            <p className="muted">{locale === "uk" ? "Голосуйте, не чекаючи кінця обговорення. Вибір можна змінити, доки не проголосують усі. Утриматися не можна." : "Vote without waiting for the discussion to end. You can change your choice until everyone has voted. Abstention is unavailable."}</p>
+            {selectedHand && <p className={castVote ? "status-good" : "muted"}>{castVote
+              ? `${locale === "uk" ? "Ваш голос" : "Your vote"}: #${(publicState.characters.find((entry) => entry.characterId === castVote)?.seat ?? 0) + 1} · ${publicState.characters.find((entry) => entry.characterId === castVote)?.controller?.nickname ?? ""}`
+              : (locale === "uk" ? "Цей персонаж ще не голосував." : "This character has not voted yet.")}</p>}
+            <div className="vote-list">{candidates.map((candidate) => <button className={candidate.characterId === castVote ? "cast" : ""} aria-pressed={voteTarget === candidate.characterId} key={candidate.characterId} onClick={() => selectedHand && setVoteDrafts((drafts) => ({ ...drafts, [selectedHand.characterId]: candidate.characterId }))}>{candidate.characterId === castVote ? "✓ " : ""}#{candidate.seat + 1} · {candidate.controller?.nickname}</button>)}</div>
+            <button className="primary" disabled={!voteTarget || voteTarget === castVote || !selectedHand || !legal("cast-vote")} onClick={() => selectedHand && voteTarget && void command("game:cast-vote", { voterCharacterId: selectedHand.characterId, targetCharacterId: voteTarget }, locale === "uk" ? "Голос збережено приватно" : "Vote saved privately")}>{castVote ? (locale === "uk" ? "Змінити голос" : "Change vote") : (locale === "uk" ? "Зберегти голос" : "Save vote")}</button>
+          </section>}
         </div>
 
         <aside className="stack sticky">
           <ContextPanel room={room} />
-          {viewer.role === "participant" && <section className="card stack"><h2>{locale === "uk" ? "Дія фази" : "Phase action"}</h2><button disabled={!selectedHand || !legal("play-special-condition")}>{locale === "uk" ? "Зіграти Особливу умову" : "Play Special Condition"}</button>{publicState.phase.includes("speech") && <button className="primary" disabled={!selectedHand || !legal("end-speech")} onClick={() => selectedHand && void command("game:end-speech", { characterId: selectedHand.characterId }, locale === "uk" ? "Виступ завершено" : "Speech ended")}>{locale === "uk" ? "Завершити виступ" : "End speech"}</button>}<p className="muted">{selectedPublic?.status === "exiled" ? (locale === "uk" ? "Вигнаний: без ходу відкриття, але голос і Особлива умова доступні." : "Exiled: no reveal turn, but ballot and Special Condition remain.") : locale === "uk" ? "Кнопки активуються лише у дозволеній фазі." : "Actions enable only in their legal phase."}</p></section>}
+          {viewer.role === "participant" && <section className="card stack"><h2>{locale === "uk" ? "Дія фази" : "Phase action"}</h2><button disabled={!selectedHand || !legal("play-special-condition")}>{locale === "uk" ? "Зіграти Особливу умову" : "Play Special Condition"}</button>{publicState.phase.includes("speech") && <button className="primary" disabled={!selectedHand || !legal("end-speech")} onClick={() => selectedHand && void command("game:end-speech", { characterId: selectedHand.characterId }, locale === "uk" ? "Виступ завершено" : "Speech ended")}>{locale === "uk" ? "Завершити виступ" : "End speech"}</button>}{legal("end-discussion") && <button className="primary" onClick={() => void command("game:end-discussion", {}, locale === "uk" ? "Обговорення завершено" : "Discussion ended")}>{publicState.ballot ? (locale === "uk" ? "Завершити й підбити підсумок" : "End and settle the vote") : (locale === "uk" ? "Завершити обговорення" : "End discussion")}</button>}{legal("close-vote") && <button className="primary" onClick={() => void command("game:close-vote", {}, locale === "uk" ? "Голосування закрито" : "Vote closed")}>{locale === "uk" ? "Закрити голосування" : "Close vote"}</button>}<p className="muted">{selectedPublic?.status === "exiled" ? (locale === "uk" ? "Вигнаний: без ходу відкриття, але голос і Особлива умова доступні." : "Exiled: no reveal turn, but ballot and Special Condition remain.") : locale === "uk" ? "Кнопки активуються лише у дозволеній фазі." : "Actions enable only in their legal phase."}</p></section>}
         </aside>
       </div>
       {detail && <CardDetail card={detail} onClose={() => setDetail(null)} />}
@@ -142,7 +195,7 @@ function ContextPanel({ room }: { room: RoomSnapshot }) {
   const locale = useAppStore((state) => state.locale);
   const state = room.game?.publicState;
   if (!state) return null;
-  return <section className="card stack"><h2>{locale === "uk" ? "Контекст виживання" : "Survival context"}</h2>{state.revealedCatastrophe ? <button className="game-card"><small>catastrophe</small><strong>{pickLocalized(state.revealedCatastrophe.title, locale)}</strong></button> : <p className="muted">{locale === "uk" ? "Катастрофа ще прихована" : "Catastrophe is concealed"}</p>}<div className="row"><span className="badge">{locale === "uk" ? "Місткість" : "Capacity"}: {state.capacity}</span><span className="badge">{locale === "uk" ? "Ще вигнати" : "Exiles left"}: {state.remainingExiles}</span></div><div className="table-scroll"><table><thead><tr><th>{locale === "uk" ? "Раунд" : "Round"}</th><th>Bunker</th><th>Threat</th></tr></thead><tbody>{[0,1,2,3,4].map((index) => <tr key={index}><td>{index + 1}</td><td>{state.revealedBunkerCards[index] ? "✓" : "—"}</td><td>{state.revealedThreatCards[index] ? "✓" : "—"}</td></tr>)}</tbody></table></div>{state.tiedCharacterIds.length > 0 && <div className="notice"><strong>{locale === "uk" ? "Нічия" : "Tie"}</strong><p>{room.participants.filter((participant) => participant.role !== "spectator").length >= 6 ? (locale === "uk" ? "Захист → переголосування → жереб" : "Defense → runoff → lot") : (locale === "uk" ? "Нікого не вигнано; гра продовжується" : "Nobody is exiled; play continues")}</p></div>}</section>;
+  return <section className="card stack"><h2>{locale === "uk" ? "Контекст виживання" : "Survival context"}</h2>{state.revealedCatastrophe ? <button className="game-card"><small>{label(deckLabels, "catastrophe", locale)}</small><strong>{pickLocalized(state.revealedCatastrophe.title, locale)}</strong></button> : <p className="muted">{locale === "uk" ? "Катастрофа ще прихована" : "Catastrophe is concealed"}</p>}<div className="row"><span className="badge">{locale === "uk" ? "Місткість" : "Capacity"}: {state.capacity}</span><span className="badge">{locale === "uk" ? "Ще вигнати" : "Exiles left"}: {state.remainingExiles}</span></div><div className="table-scroll"><table><thead><tr><th>{locale === "uk" ? "Раунд" : "Round"}</th><th>Bunker</th><th>Threat</th></tr></thead><tbody>{[0,1,2,3,4].map((index) => <tr key={index}><td>{index + 1}</td><td>{state.revealedBunkerCards[index] ? "✓" : "—"}</td><td>{state.revealedThreatCards[index] ? "✓" : "—"}</td></tr>)}</tbody></table></div>{state.tiedCharacterIds.length > 0 && <div className="notice"><strong>{locale === "uk" ? "Нічия" : "Tie"}</strong><p>{room.participants.filter((participant) => participant.role !== "spectator").length >= 6 ? (locale === "uk" ? "Захист → переголосування → жереб" : "Defense → runoff → lot") : (locale === "uk" ? "Нікого не вигнано; гра продовжується" : "Nobody is exiled; play continues")}</p></div>}</section>;
 }
 
 function PostGame({ room, command }: { room: RoomSnapshot; command: (name: Parameters<typeof realtime.command>[0], body: Record<string, unknown>, message: string) => Promise<void> }) {

@@ -40,6 +40,7 @@ const approvedRuleIds = [
   "APR-SMALL-GROUP-FILL-SIX",
   "APR-PARTICIPANT-TIE-OVERTIME",
   "APR-SAME-ROOM-REMATCH",
+  "APR-R1-PROFESSION-OPTIONAL",
 ];
 const expectedRuleIds = new Set([...officialRuleIds, ...approvedRuleIds]);
 
@@ -74,10 +75,12 @@ if (missing.length || unexpected.length)
   fail(`inventory mismatch; missing=[${missing}] unexpected=[${unexpected}]`);
 const approved = ids.filter((id) => id.startsWith("APR-"));
 if (
-  approved.length !== 4 ||
+  approved.length !== approvedRuleIds.length ||
   approved.some((id) => !approvedRuleIds.includes(id))
 ) {
-  fail("profile must contain exactly the four approved product rules");
+  fail(
+    `profile must contain exactly the ${approvedRuleIds.length} approved product rules`,
+  );
 }
 
 const manifestLines = manifest

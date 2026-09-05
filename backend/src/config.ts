@@ -1,3 +1,18 @@
+/** Local dev runs the frontend on 3000 and its second instance on 3001; 3002 is kept for a third tab. */
+const DEFAULT_CORS_ORIGINS = "http://localhost:3000,http://localhost:3001,http://localhost:3002";
+
+const originList = (raw: string | undefined): string[] => {
+  const origins = (raw ?? DEFAULT_CORS_ORIGINS).split(",").map((value) => value.trim()).filter(Boolean);
+  if (origins.length === 0 || origins.includes("*")) throw new Error("CORS_ORIGINS must be an explicit allowlist");
+  for (const origin of origins) {
+    // app.ts and realtime.ts match the browser's Origin header exactly, so a path or trailing slash would never match.
+    let parsed: URL | undefined;
+    try { parsed = new URL(origin); } catch { parsed = undefined; }
+    if (!parsed || parsed.origin !== origin) throw new Error(`Invalid CORS origin: ${origin}`);
+  }
+  return origins;
+};
+
 const integer = (raw: string | undefined, fallback: number, min: number, max: number): number => {
   const value = raw === undefined ? fallback : Number(raw);
   if (!Number.isInteger(value) || value < min || value > max) throw new Error(`Invalid operational integer: ${raw ?? "unset"}`);
@@ -18,8 +33,7 @@ export type ServerConfig = Readonly<{
 }>;
 
 export const loadConfig = (env: NodeJS.ProcessEnv = process.env): ServerConfig => {
-  const origins = ("http://localhost:3000,http://localhost:3001,http://localhost:3002").split(",").map((value) => value.trim()).filter(Boolean);
-  if (origins.length === 0 || origins.includes("*")) throw new Error("CORS_ORIGINS must be an explicit allowlist");
+  const origins = originList(env.CORS_ORIGINS);
   return {
     port: integer(env.PORT, 4000, 1, 65_535),
     corsOrigins: new Set(origins),

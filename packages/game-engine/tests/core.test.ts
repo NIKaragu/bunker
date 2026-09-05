@@ -10,6 +10,7 @@ import {
   createGameState,
   createLobbyAllocation,
   dealGame,
+  dealShortfalls,
   projectForViewer,
   revealOrdinaryCard,
   validatePack,
@@ -122,6 +123,57 @@ describe("deterministic domain primitives", () => {
       valid: true,
       compatibleCharacterCounts: expect.arrayContaining([15]),
     });
+  });
+
+  test("ships playable bilingual content in every deck", () => {
+    const pack = createBunkerPartyPack();
+    const counts = new Map<string, number>();
+    for (const card of pack.cards) {
+      const deck =
+        card.type === "character" ? (card.category ?? "?") : card.type;
+      counts.set(deck, (counts.get(deck) ?? 0) + 1);
+    }
+
+    // The 3.3 reference composition.
+    expect(Object.fromEntries(counts)).toEqual({
+      profession: 50,
+      biology: 32,
+      health: 32,
+      hobby: 32,
+      baggage: 32,
+      fact: 50,
+      "special-condition": 32,
+      catastrophe: 20,
+      bunker: 30,
+      threat: 21,
+    });
+
+    const titles = pack.cards.map((card) => card.title.uk ?? "");
+    expect(new Set(titles).size).toBe(titles.length);
+    for (const card of pack.cards) {
+      expect(card.title.uk?.length).toBeGreaterThan(2);
+      expect(card.title.en?.length).toBeGreaterThan(2);
+      // Placeholder text ("profession 4 · варіант") must never reach a player.
+      expect(card.title.en).not.toMatch(/\d+ · variant$/);
+      expect(card.details ?? card.consequence).toBeDefined();
+    }
+  });
+
+  test("reports the decks a pack cannot deal before a table tries to start", () => {
+    const pack = createBunkerPartyPack();
+
+    expect(dealShortfalls(pack.cards, categories, 15)).toEqual([]);
+    expect(
+      dealShortfalls(pack.cards, [...categories, "superpower"], 15),
+    ).toEqual([{ deck: "superpower", available: 0, required: 15 }]);
+    expect(() =>
+      dealGame(
+        Array.from({ length: 6 }, (_, index) => `character_${index + 1}`),
+        pack.cards,
+        [...categories, "superpower"],
+        new SeededRandom("seed"),
+      ),
+    ).toThrowError("Insufficient superpower cards");
   });
 
   test("manual reveal and expiry retry cannot reveal two cards", () => {

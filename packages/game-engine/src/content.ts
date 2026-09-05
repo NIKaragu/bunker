@@ -1,6 +1,20 @@
 import type { RandomSource } from "./random.js";
 import { shuffled } from "./random.js";
 import { validateDeckSelection } from "./rules.js";
+import {
+  BAGGAGE_CARDS,
+  BIOLOGY_CARDS,
+  BUNKER_CARDS,
+  CATASTROPHE_CARDS,
+  FACT_CARDS,
+  HEALTH_CARDS,
+  HOBBY_CARDS,
+  PROFESSION_CARDS,
+  SPECIAL_CONDITION_CARDS,
+  THREAT_CARDS,
+  type CardEntry,
+  type ContextCard,
+} from "./bunker-party-cards.js";
 
 export const CLASSIC_CATEGORIES = [
   "profession",
@@ -262,6 +276,51 @@ const take = (
   return shuffled(cards, random).slice(0, count);
 };
 
+/** Fixed non-character requirements every deal draws from, regardless of table size. */
+const FIXED_DEAL_REQUIREMENTS = [
+  ["catastrophe", 1],
+  ["bunker", 5],
+  ["threat", 7],
+] as const;
+
+/**
+ * Reports every deck that cannot cover a table of `characterCount` characters.
+ * Callers use it to reject an undealable configuration up front instead of
+ * letting `dealGame` throw once the table is already waiting to start.
+ */
+export const dealShortfalls = (
+  cards: readonly Card[],
+  characterDecks: readonly string[],
+  characterCount: number,
+): readonly Readonly<{
+  deck: string;
+  available: number;
+  required: number;
+}>[] => {
+  const shortfalls: { deck: string; available: number; required: number }[] =
+    [];
+  const record = (deck: string, available: number, required: number) => {
+    if (available < required) shortfalls.push({ deck, available, required });
+  };
+  for (const category of characterDecks) {
+    record(
+      category,
+      cards.filter(
+        (card) => card.type === "character" && card.category === category,
+      ).length,
+      characterCount,
+    );
+  }
+  record(
+    "special-condition",
+    cards.filter((card) => card.type === "special-condition").length,
+    characterCount,
+  );
+  for (const [type, required] of FIXED_DEAL_REQUIREMENTS)
+    record(type, cards.filter((card) => card.type === type).length, required);
+  return shortfalls;
+};
+
 export const dealGame = (
   characterIds: readonly string[],
   cards: readonly Card[],
@@ -330,74 +389,66 @@ const cardId = (kind: string, index: number) =>
 /** Original, compact bilingual content sufficient for a 15-character party. */
 export const createBunkerPartyPack = (): CustomPack => {
   const packId = "pack_general_v1";
+  const provenance = "Original Bunker Party content";
+  const decks: readonly (readonly [CharacterCategory, readonly CardEntry[]])[] =
+    [
+      ["profession", PROFESSION_CARDS],
+      ["biology", BIOLOGY_CARDS],
+      ["health", HEALTH_CARDS],
+      ["hobby", HOBBY_CARDS],
+      ["baggage", BAGGAGE_CARDS],
+      ["fact", FACT_CARDS],
+    ];
   const cards: Card[] = [];
-  for (const category of CLASSIC_CATEGORIES) {
-    const count = category === "profession" || category === "fact" ? 50 : 32;
-    for (let index = 1; index <= count; index += 1) {
+  for (const [category, entries] of decks)
+    entries.forEach(([titleUk, titleEn, detailUk, detailEn], index) => {
       cards.push({
-        id: cardId(category, index),
+        id: cardId(category, index + 1),
         sourcePackId: packId,
         type: "character",
         category,
-        title: localized(
-          `${category} ${index} · варіант`,
-          `${category} ${index} · variant`,
-        ),
-        provenance: "Original Bunker Party content",
+        title: localized(titleUk, titleEn),
+        details: localized(detailUk, detailEn),
+        provenance,
       } as Card);
-    }
-  }
-  const effects = [
-    { type: "swap-card", category: "hobby" },
-    { type: "reveal-random", count: 1 },
-    { type: "protect-from-vote", rounds: 1 },
-    { type: "double-vote", rounds: 1 },
-    { type: "force-reveal" },
-    { type: "exchange-characters" },
-  ] as const;
-  for (let index = 1; index <= 32; index += 1) {
+    });
+  SPECIAL_CONDITION_CARDS.forEach((entry, index) => {
     cards.push({
-      id: cardId("special", index),
+      id: cardId("special", index + 1),
       sourcePackId: packId,
       type: "special-condition",
-      timing: "discussion",
-      effect: effects[(index - 1) % effects.length],
-      title: localized(`Особлива умова ${index}`, `Special condition ${index}`),
-      provenance: "Original Bunker Party content",
+      timing: entry.timing,
+      effect: entry.effect,
+      title: localized(entry.title[0], entry.title[1]),
+      details: localized(entry.details[0], entry.details[1]),
+      provenance,
     } as Card);
-  }
-  for (let index = 1; index <= 20; index += 1)
-    cards.push({
-      id: cardId("catastrophe", index),
-      sourcePackId: packId,
-      type: "catastrophe",
-      title: localized(`Катастрофа ${index}`, `Catastrophe ${index}`),
-      usefulTags: ["planning"],
-      consequence: localized(
-        "Команда перевіряє стійкість.",
-        "The team tests its resilience.",
-      ),
-      provenance: "Original Bunker Party content",
-    } as Card);
-  for (let index = 1; index <= 30; index += 1)
-    cards.push({
-      id: cardId("bunker", index),
-      sourcePackId: packId,
-      type: "bunker",
-      title: localized(`Ресурс бункера ${index}`, `Bunker resource ${index}`),
-      usefulTags: ["supply"],
-      provenance: "Original Bunker Party content",
-    } as Card);
-  for (let index = 1; index <= 21; index += 1)
-    cards.push({
-      id: cardId("threat", index),
-      sourcePackId: packId,
-      type: "threat",
-      title: localized(`Загроза ${index}`, `Threat ${index}`),
-      usefulTags: ["planning"],
-      consequence: localized("Випадковий наслідок.", "A random consequence."),
-      provenance: "Original Bunker Party content",
-    } as Card);
+  });
+  const contextDeck = (
+    kind: "catastrophe" | "bunker" | "threat",
+    entries: readonly ContextCard[],
+  ) =>
+    entries.forEach((entry, index) => {
+      cards.push({
+        id: cardId(kind, index + 1),
+        sourcePackId: packId,
+        type: kind,
+        title: localized(entry.title[0], entry.title[1]),
+        usefulTags: entry.usefulTags,
+        ...(kind === "bunker"
+          ? { details: localized(entry.consequence[0], entry.consequence[1]) }
+          : {
+              consequence: localized(
+                entry.consequence[0],
+                entry.consequence[1],
+              ),
+            }),
+        provenance,
+      } as Card);
+    });
+  contextDeck("catastrophe", CATASTROPHE_CARDS);
+  contextDeck("bunker", BUNKER_CARDS);
+  contextDeck("threat", THREAT_CARDS);
   return {
     schemaVersion: 1,
     id: packId,

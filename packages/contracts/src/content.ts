@@ -5,6 +5,9 @@ export const characterCategorySchema = z.enum(["profession", "biology", "health"
 export const cardTypeSchema = z.enum(["character", "special-condition", "catastrophe", "bunker", "threat"]);
 export const rulesProfileIdSchema = z.enum(["bunker-party-v1", "combined-editions-v1"]);
 
+/** Character decks the `bunker-party-v1` rules profile deals from; the built-in pack covers exactly these. */
+export const BUNKER_PARTY_CHARACTER_DECKS = ["profession", "biology", "health", "hobby", "baggage", "fact"] as const;
+
 export const localizedTextSchema = z.object({
   uk: boundedPlainTextSchema.optional(),
   en: boundedPlainTextSchema.optional()
@@ -74,4 +77,10 @@ export const packValidationResultSchema = z.object({
 
 export const revealedCardSchema = z.intersection(cardSchema, z.object({ revealedAt: z.string().datetime({ offset: true }) }).strict());
 export const concealedCardSchema = z.object({ cardId: cardIdSchema, type: cardTypeSchema, category: characterCategorySchema.optional() }).strict();
-export const privateCharacterHandSchema = z.object({ characterId: characterIdSchema, controllerId: participantIdSchema, cards: z.array(cardSchema).max(16) }).strict();
+export const privateCharacterHandSchema = z.object({
+  characterId: characterIdSchema,
+  controllerId: participantIdSchema,
+  cards: z.array(cardSchema).max(16),
+  /** Who this character voted for in the open ballot; visible only to its controller. */
+  votedForCharacterId: characterIdSchema.nullable().default(null)
+}).strict();

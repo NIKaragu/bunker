@@ -74,6 +74,9 @@ h2 { font-size: clamp(1.25rem, 5vw, 2rem); }
 .timer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
 .timer { padding: .7rem; background: #0e1513; border: 1px solid var(--line); border-radius: 10px; }
 .vote-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .55rem; }
+.vote-list button[aria-pressed="true"] { border-color: var(--amber); background: #372814; }
+.vote-list button.cast { border-color: var(--green); }
+.vote-list button.cast[aria-pressed="true"] { border-color: var(--amber); }
 .pack-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: .5rem; }
 table { border-collapse: collapse; width: 100%; font-size: .88rem; }
 th, td { border-bottom: 1px solid var(--line); padding: .65rem .4rem; text-align: left; }

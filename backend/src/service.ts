@@ -17,12 +17,15 @@ import {
   createGameState,
   createLobbyAllocation,
   dealGame,
+  dealShortfalls,
   exileCharacter,
+  legalRevealCategories,
   projectForViewer,
   reconcileRoster,
   releaseExtraCharacter,
   resolveBaseFinal,
   revealOrdinaryCard,
+  validateDeckSelection,
   validatePack,
   type Card,
   type CustomPack as EngineCustomPack,
@@ -84,8 +87,12 @@ type GameRecord = {
     castVoterIds: string[];
     notCastVoterIds: string[];
     candidates: string[];
+    /** Voter -> candidate. Server-only: the ballot is secret until it closes. */
+    votes: Record<string, string>;
     tally?: Record<string, number>;
   };
+  /** Expulsion attempts already completed in the current round. */
+  expulsionAttempts: number;
   outcome: null | { goal: "salvation" | "revival"; winningCharacterIds: string[]; losingCharacterIds: string[]; summaryKey: string };
   spokenCharacterIds: Set<string>;
   finalState: FinalView | null;
@@ -119,6 +126,8 @@ const id = (prefix: string): string => `${prefix}_${randomUUID().replaceAll("-",
 const normalizeNickname = (value: string): string => value.normalize("NFKC").trim().replace(/\s+/g, " ");
 const nicknameKey = (value: string): string => normalizeNickname(value).toLocaleLowerCase("en-US");
 const clone = <T>(value: T): T => structuredClone(value);
+/** Largest table the settings allow: 3–5 players are still dealt six characters. */
+const maxTableCharacters = (settings: Settings): number => Math.max(6, settings.maxParticipants);
 
 export class BunkerService {
   private readonly sessions = new Map<string, SessionRecord>();
@@ -199,6 +208,7 @@ export class BunkerService {
     if (this.rooms.size >= this.config.maxRooms) throw new BunkerError("RATE_LIMITED", "Room capacity reached");
     const parsed = createRoomInputSchema.parse(input);
     this.validatePacks(parsed.customPacks);
+    this.assertDealable(parsed.settings, parsed.customPacks);
     const roomId = id("room");
     const now = this.now;
     const room: RoomRecord = {
@@ -377,6 +387,7 @@ export class BunkerService {
       this.requireHost(room, session);
       if (room.status === "in-game") throw new BunkerError("INVALID_PHASE");
       const settings = createRoomInputSchema.shape.settings.parse(payload.settings);
+      this.assertDealable(settings, room.customPacks);
       const participantCount = room.members.filter((entry) => entry.role !== "spectator").length;
       if (participantCount > settings.maxParticipants) throw new BunkerError("ROOM_FULL", "maxParticipants cannot be lower than the current participant count");
       room.settings = clone(settings);
@@ -429,13 +440,17 @@ export class BunkerService {
       return;
     }
     if (name === "game:end-speech") {
+      if (room.game.state.phase !== "round-speech" && room.game.state.phase !== "overtime-speech") throw new BunkerError("INVALID_PHASE");
       if (payload.characterId !== room.game.state.activeCharacterId || !controlled.some((entry) => entry.id === payload.characterId)) throw new BunkerError("FORBIDDEN");
       this.finishSpeech(room);
       return;
     }
     if (name === "game:end-discussion") {
       this.requireHost(room, session);
-      this.openBallot(room);
+      if (room.game.state.phase !== "round-discussion" && room.game.state.phase !== "overtime-discussion") throw new BunkerError("INVALID_PHASE");
+      this.cancelKind(room.game, "discussion");
+      if (room.game.ballot) { this.closeBallot(room); return; }
+      this.runScheduledExpulsions(room);
       return;
     }
     if (name === "game:cast-vote") {
@@ -444,9 +459,14 @@ export class BunkerService {
       if (!controlled.some((entry) => entry.id === voter)) throw new BunkerError("FORBIDDEN");
       if (!room.game.ballot || !room.game.ballot.eligibleVoterIds.includes(voter)) throw new BunkerError("VOTE_CLOSED");
       if (!room.game.ballot.candidates.includes(target)) throw new BunkerError("INVALID_TARGET");
-      if (!room.game.ballot.castVoterIds.includes(voter)) room.game.ballot.castVoterIds.push(voter);
+      // A character never votes to exile itself.
+      if (voter === target) throw new BunkerError("INVALID_TARGET", "A character cannot vote against itself");
+      // Players may change their choice until the ballot locks, so record the choice and recount.
+      room.game.ballot.votes[voter] = target;
+      room.game.ballot.castVoterIds = room.game.ballot.eligibleVoterIds.filter((entry) => entry in (room.game?.ballot?.votes ?? {}));
       room.game.ballot.notCastVoterIds = room.game.ballot.eligibleVoterIds.filter((entry) => !room.game?.ballot?.castVoterIds.includes(entry));
-      room.game.ballot.tally = { ...(room.game.ballot.tally ?? {}), [target]: (room.game.ballot.tally?.[target] ?? 0) + 1 };
+      room.game.ballot.tally = this.tally(room.game.ballot.candidates, room.game.ballot.votes);
+      if (room.game.ballot.notCastVoterIds.length === 0) { this.closeBallot(room); return; }
       this.mutateRoom(room, false);
       return;
     }
@@ -498,6 +518,7 @@ export class BunkerService {
   }
 
   private startGame(room: RoomRecord): void {
+    this.assertDealable(room.settings, room.customPacks);
     this.ensureAllocation(room);
     if (!room.allocation || !allocationIsStartable(room.allocation)) throw new BunkerError("NOT_READY");
     const allocation = allocations(room.allocation);
@@ -508,10 +529,10 @@ export class BunkerService {
     const gameId = id("game");
     const seed = randomBytes(24).toString("base64url");
     const deal = dealGame(characterIds, cards, room.settings.characterDecks, new SeededRandom(seed));
-    const characters = allocation.flatMap((entry) => entry.characterIds.map((characterId, index) => ({
+    const characters = allocation.flatMap((entry) => entry.characterIds.map((characterId) => ({
       id: characterId.startsWith("character_") ? `${characterId}_${gameId.slice(-8)}` : characterId,
       controllerId: entry.participantId,
-      seat: characterIds.indexOf(characterId) + index,
+      seat: characterIds.indexOf(characterId),
       status: "active" as const,
       hand: deal.hands.get(characterId) ?? [],
       revealedCardIds: new Set<string>(),
@@ -519,13 +540,14 @@ export class BunkerService {
     })));
     const remappedHands = new Map(characterIds.map((old, index) => [characters[index]?.id ?? old, deal.hands.get(old) ?? []]));
     const withHands = characters.map((entry) => ({ ...entry, hand: remappedHands.get(entry.id) ?? [] }));
-    const state = createGameState({ gameId, seed, humanParticipantCount: allocation.length, characters: withHands, starterCharacterId: withHands[0]?.id ?? "" });
+    const state = createGameState({ gameId, seed, humanParticipantCount: allocation.length, characters: withHands, starterCharacterId: withHands[0]?.id ?? "", forceProfessionFirstRound: room.settings.forceProfessionFirstRound });
     room.game = {
       state,
       cardsById: new Map(cards.map((card) => [card.id, card])),
       selectedPackIds: packs.map((pack) => pack.id),
       deadlines: { selection: null, speech: null, discussion: null, voting: null, tieDefense: null },
       jobs: new Set(), jobByKind: new Map(), ballot: null, outcome: null, spokenCharacterIds: new Set(),
+      expulsionAttempts: 0,
       finalState: null,
       finalCards: {
         catastrophe: deal.catastrophe,
@@ -563,7 +585,13 @@ export class BunkerService {
         revealedBunkerCards: [],
         revealedThreatCards: room.game.finalState && room.game.finalState.stage !== "not-started" ? room.game.finalCards.threats.slice(0, 1).map((card) => ({ ...card, revealedAt: new Date(room.updatedAt).toISOString() })) : [],
         revealedCatastrophe: room.game.finalState?.stage === "catastrophe" || room.game.finalState?.stage === "resolved" ? { ...room.game.finalCards.catastrophe, revealedAt: new Date(room.updatedAt).toISOString() } : null,
-        deadlines: room.game.deadlines, ballot: room.game.ballot,
+        deadlines: room.game.deadlines,
+        ballot: room.game.ballot ? {
+          eligibleVoterIds: [...room.game.ballot.eligibleVoterIds],
+          castVoterIds: [...room.game.ballot.castVoterIds],
+          notCastVoterIds: [...room.game.ballot.notCastVoterIds],
+          candidates: [...room.game.ballot.candidates]
+        } : null,
         tiedCharacterIds: [], outcome: room.game.outcome,
         finalState: room.game.finalState ? clone(room.game.finalState) : null
       },
@@ -571,7 +599,7 @@ export class BunkerService {
         role: "participant",
         privateState: {
           participantId: viewer.profile.participantId,
-          controlledCharacters: room.game.state.characters.filter((entry) => entry.controllerId === viewer.profile.participantId).map((entry) => ({ characterId: entry.id, controllerId: viewer.profile.participantId, cards: entry.hand })),
+          controlledCharacters: room.game.state.characters.filter((entry) => entry.controllerId === viewer.profile.participantId).map((entry) => ({ characterId: entry.id, controllerId: viewer.profile.participantId, cards: entry.hand, votedForCharacterId: room.game?.ballot?.votes[entry.id] ?? null })),
           pendingVote: null,
           legalActions: this.legalActions(room, viewer)
         }
@@ -597,7 +625,12 @@ export class BunkerService {
     return { roomId: room.roomId, name: room.name, status: room.status, participantCount: room.members.filter((entry) => entry.role !== "spectator").length, spectatorCount: room.members.filter((entry) => entry.role === "spectator").length, maxParticipants: room.settings.maxParticipants, hostNickname: host?.profile.nickname ?? "Anonymous", adultContent: room.adultContent, createdAt: new Date(room.createdAt).toISOString() };
   }
 
-  private autoStart(room: RoomRecord): void { if (this.canStart(room)) this.startGame(room); }
+  private autoStart(room: RoomRecord): void {
+    if (!this.canStart(room)) return;
+    // Readiness is already recorded; a table that cannot be dealt must surface
+    // through the host's explicit start rather than rejecting a player's ready.
+    try { this.startGame(room); } catch { /* host retains an explicit start that reports why */ }
+  }
   private canStart(room: RoomRecord): boolean {
     if (room.status !== "lobby" && room.status !== "post-game") return false;
     const participants = room.members.filter((entry) => entry.role !== "spectator");
@@ -622,17 +655,21 @@ export class BunkerService {
     return [...(allocations(room.allocation).find((entry) => entry.participantId === participantId)?.characterIds ?? [])];
   }
 
+  /**
+   * Opens a ballot without leaving the discussion, so players debate and vote at
+   * the same time. The verdict lands as soon as every eligible voter has cast.
+   */
   private openBallot(room: RoomRecord): void {
     if (!room.game) throw new BunkerError("INVALID_PHASE");
     const eligible = room.game.state.characters.filter((entry) => entry.status === "active" || entry.status === "exiled").map((entry) => entry.id);
     const candidates = room.game.state.characters.filter((entry) => entry.status === "active").map((entry) => entry.id);
-    room.game.ballot = { eligibleVoterIds: eligible, castVoterIds: [], notCastVoterIds: [...eligible], candidates, tally: Object.fromEntries(candidates.map((entry) => [entry, 0])) };
-    this.advanceGamePhase(room, room.game.state.phase.startsWith("overtime") ? "overtime-voting" : "round-voting");
-    this.schedulePhase(room, "voting");
+    room.game.ballot = { eligibleVoterIds: eligible, castVoterIds: [], notCastVoterIds: [...eligible], candidates, votes: {}, tally: this.tally(candidates, {}) };
+    this.mutateRoom(room, false);
   }
   private closeBallot(room: RoomRecord): void {
     if (!room.game?.ballot) throw new BunkerError("VOTE_CLOSED");
     this.cancelKind(room.game, "voting");
+    this.cancelKind(room.game, "discussion");
     room.game.ballot.notCastVoterIds = room.game.ballot.eligibleVoterIds.filter((entry) => !room.game?.ballot?.castVoterIds.includes(entry));
     const maximum = Math.max(...Object.values(room.game.ballot.tally ?? {}));
     const tied = Object.entries(room.game.ballot.tally ?? {}).filter(([, count]) => count === maximum).map(([characterId]) => characterId);
@@ -655,21 +692,53 @@ export class BunkerService {
       room.game.deadlines.tieDefense = null;
       this.advanceGamePhase(room, "runoff-voting");
       this.openBallot(room);
+      this.schedulePhase(room, "voting");
     });
     room.game.jobs.add(handle);
     room.game.jobByKind.set("tieDefense", handle);
   }
   private finishExpulsionAttempt(room: RoomRecord): void {
     if (!room.game) return;
-    room.game.state = advanceRound(room.game.state, { commandId: id("advance"), gameId: room.game.state.gameId, expectedVersion: room.game.state.version });
-    if (room.game.state.phase === "final") {
+    room.game.expulsionAttempts += 1;
+    this.runScheduledExpulsions(room);
+  }
+  /**
+   * Opens the next ballot while this round still owes an expulsion attempt, and
+   * otherwise closes the round. The official table schedules zero attempts in
+   * some rounds, which must end the round instead of putting anyone to a vote.
+   */
+  private expulsionsRemaining(room: RoomRecord): number {
+    const game = room.game;
+    if (!game) return 0;
+    const scheduled = game.state.phase.startsWith("overtime") ? 1 : game.state.schedule[game.state.baseRound - 1] ?? 0;
+    return Math.max(0, scheduled - game.expulsionAttempts);
+  }
+  private runScheduledExpulsions(room: RoomRecord): void {
+    const game = room.game;
+    if (!game) return;
+    if (this.expulsionsRemaining(room) > 0) {
+      this.schedulePhase(room, "discussion");
+      this.openBallot(room);
+      return;
+    }
+    game.expulsionAttempts = 0;
+    game.state = advanceRound(game.state, { commandId: id("advance"), gameId: game.state.gameId, expectedVersion: game.state.version });
+    if (game.state.phase === "final") {
       if (room.settings.mode === "base") this.completeBaseGame(room);
       else this.startSurvivalFinal(room);
       return;
     }
-    room.game.spokenCharacterIds.clear();
+    game.spokenCharacterIds.clear();
     this.schedulePhase(room, "selection");
     this.mutateRoom(room, false);
+  }
+  private tally(candidates: readonly string[], votes: Readonly<Record<string, string>>): Record<string, number> {
+    const counts = new Map<string, number>(candidates.map((entry) => [entry, 0]));
+    for (const target of Object.values(votes)) {
+      const current = counts.get(target);
+      if (current !== undefined) counts.set(target, current + 1);
+    }
+    return Object.fromEntries(counts);
   }
   private completeBaseGame(room: RoomRecord): void {
     if (!room.game) return;
@@ -729,6 +798,7 @@ export class BunkerService {
     } else {
       this.advanceGamePhase(room, room.game.state.phase.startsWith("overtime") ? "overtime-discussion" : "round-discussion");
       this.schedulePhase(room, "discussion");
+      if (this.expulsionsRemaining(room) > 0) this.openBallot(room);
     }
   }
   private schedulePhase(room: RoomRecord, kind: "selection" | "speech" | "discussion" | "voting"): void {
@@ -747,8 +817,8 @@ export class BunkerService {
         try { game.state = revealOrdinaryCard(game.state, { commandId: id("timer"), gameId, expectedVersion: game.state.version, characterId: game.state.activeCharacterId }, new SeededRandom(`${game.state.seed}:timer`)); } catch { return; }
         this.schedulePhase(room, "speech");
       } else if (kind === "speech") this.finishSpeech(room);
-      else if (kind === "discussion") this.openBallot(room);
-      else this.closeBallot(room);
+      else if (kind === "discussion") { if (game.ballot) this.closeBallot(room); else this.runScheduledExpulsions(room); }
+      else if (game.ballot) this.closeBallot(room);
       this.mutateRoom(room, false);
     });
     room.game.jobs.add(handle);
@@ -811,10 +881,55 @@ export class BunkerService {
     if (!valid) throw new BunkerError("INVALID_PAYLOAD", "Avatar signature mismatch");
   }
   private validatePacks(packs: readonly CustomPack[]): void { for (const pack of packs) if (!validatePack(pack).valid) throw new BunkerError("PACK_INVALID"); }
+  private assertDealable(settings: Settings, packs: readonly CustomPack[]): void {
+    try { validateDeckSelection(settings.characterDecks); }
+    catch (error) { throw new BunkerError("INVALID_PAYLOAD", error instanceof Error ? error.message : "Invalid character deck selection"); }
+    const cards = [createBunkerPartyPack(), ...(packs as unknown as EngineCustomPack[])].flatMap((pack) => pack.cards);
+    const shortfalls = dealShortfalls(cards, settings.characterDecks, maxTableCharacters(settings));
+    if (shortfalls.length === 0) return;
+    const detail = shortfalls.map((entry) => `${entry.deck} ${entry.available}/${entry.required}`).join(", ");
+    throw new BunkerError("PACK_UNSUPPORTED", `Selected packs cannot deal these decks for a full table: ${detail}`.slice(0, 300));
+  }
+  /**
+   * The commands this viewer may issue right now, following
+   * `clientCommandAuthorization`. The client only enables controls that appear
+   * here, so a phase or role the server would reject must never be listed.
+   */
   private legalActions(room: RoomRecord, session: SessionRecord): string[] {
-    if (!room.game) return [];
-    const owns = room.game.state.characters.some((entry) => entry.controllerId === session.profile.participantId);
-    return owns ? ["game:reveal-card", "game:cast-vote", "game:play-special-condition"] : [];
+    const game = room.game;
+    if (!game || room.status !== "in-game") return [];
+    const member = room.members.find((entry) => entry.sessionId === session.sessionId);
+    if (!member || member.role === "spectator") return [];
+    const controlled = game.state.characters.filter((entry) => entry.controllerId === session.profile.participantId);
+    if (controlled.length === 0) return [];
+    const phase = game.state.phase;
+    const isHost = room.hostId === session.profile.participantId;
+    const activeCharacter = controlled.find((entry) => entry.id === game.state.activeCharacterId && entry.status === "active");
+    const actions: string[] = [];
+    if (activeCharacter && (phase === "round-selection" || phase === "overtime-selection")) {
+      actions.push("game:reveal-card");
+      for (const cardId of this.revealableCardIds(game, activeCharacter)) {
+        const scoped = `game:reveal-card:${cardId}`;
+        if (scoped.length <= 80) actions.push(scoped);
+      }
+    }
+    if (activeCharacter && (phase === "round-speech" || phase === "overtime-speech")) actions.push("game:end-speech");
+    if (isHost && (phase === "round-discussion" || phase === "overtime-discussion")) actions.push("game:end-discussion");
+    if (game.ballot) {
+      if (controlled.some((entry) => game.ballot?.eligibleVoterIds.includes(entry.id))) actions.push("game:cast-vote");
+      if (isHost) actions.push("game:close-vote");
+    }
+    if (game.finalState?.utilityVote && !game.finalState.utilityVote.castParticipantIds.includes(session.profile.participantId) && game.finalState.utilityVote.eligibleParticipantIds.includes(session.profile.participantId)) {
+      actions.push("game:vote-usefulness");
+    }
+    if (controlled.some((entry) => entry.status !== "dead" && !entry.specialConditionPlayed)) actions.push("game:play-special-condition");
+    return actions.slice(0, 50);
+  }
+  /** Cards the active character may legally turn over this round, per the reveal rules. */
+  private revealableCardIds(game: GameRecord, character: GameState["characters"][number]): string[] {
+    const hidden = character.hand.filter((card) => card.type === "character" && !character.revealedCardIds.has(card.id));
+    const categories = legalRevealCategories(game.state.phase === "round-selection" ? game.state.baseRound : 0, hidden.map((card) => card.category ?? ""), game.state.forceProfessionFirstRound);
+    return hidden.filter((card) => categories.includes(card.category ?? "")).map((card) => card.id);
   }
   private rateLimit(sessionId: string): void {
     const cutoff = this.now - 60_000;
@@ -841,7 +956,13 @@ export class BunkerService {
     }
   }
   private assertAccepting(): void { if (!this.accepting) throw new BunkerError("BACKEND_UNAVAILABLE"); }
-  private asBunkerError(error: unknown): BunkerError { if (error instanceof BunkerError) return error; const code = error instanceof Error && ["STALE_STATE", "INVALID_PHASE", "INVALID_TARGET", "INVALID_CARD", "FORBIDDEN", "VOTE_CLOSED"].includes(error.message) ? error.message as ErrorCode : "INTERNAL_ERROR"; return new BunkerError(code); }
+  private asBunkerError(error: unknown): BunkerError {
+    if (error instanceof BunkerError) return error;
+    const code = error instanceof Error && ["STALE_STATE", "INVALID_PHASE", "INVALID_TARGET", "INVALID_CARD", "FORBIDDEN", "VOTE_CLOSED"].includes(error.message) ? error.message as ErrorCode : "INTERNAL_ERROR";
+    // An INTERNAL_ERROR reaches the client as a bare code, so keep the cause on the server log.
+    if (code === "INTERNAL_ERROR") console.error("[bunker] unexpected command failure", error);
+    return new BunkerError(code);
+  }
   private get now(): number { return this.scheduler.now().getTime(); }
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { createRoomInputSchema } from "@bunker/contracts";
+import { BUNKER_PARTY_CHARACTER_DECKS, createRoomInputSchema } from "@bunker/contracts";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
@@ -15,6 +15,7 @@ export function CreateRoom({ onCancel }: { onCancel: () => void }) {
   const [name, setName] = useState("");
   const [maxParticipants, setMaxParticipants] = useState(10);
   const [fillToSix, setFillToSix] = useState(false);
+  const [forceProfessionFirstRound, setForceProfessionFirstRound] = useState(true);
   const [mode, setMode] = useState<"base" | "survival-story">("base");
   const [goal, setGoal] = useState<"salvation" | "revival">("salvation");
   const [timers, setTimers] = useState<Record<TimerName, number | null>>({ selection: null, speech: null, discussion: null, voting: null });
@@ -29,13 +30,14 @@ export function CreateRoom({ onCancel }: { onCancel: () => void }) {
         minParticipants: 3,
         maxParticipants,
         fillToSix,
+        forceProfessionFirstRound,
         mode,
         finalGoal: goal,
         timers,
         tiePolicy: "participant-count-v1",
         overtimePolicy: "single-attempt-until-capacity-v1",
         selectedPackIds: ["pack_general_v1"],
-        characterDecks: ["profession", "biology", "health", "hobby", "baggage", "fact", "superpower", "phobia", "personality"],
+        characterDecks: [...BUNKER_PARTY_CHARACTER_DECKS],
       },
       customPacks: [],
       adultContentConfirmed: false,
@@ -55,6 +57,8 @@ export function CreateRoom({ onCancel }: { onCancel: () => void }) {
       <label>{locale === "uk" ? "Назва" : "Name"}<input minLength={2} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} /></label>
       <label>{locale === "uk" ? "Максимум учасників" : "Maximum participants"}<input type="number" inputMode="numeric" min={3} max={15} value={maxParticipants} onChange={(event) => setMaxParticipants(Number(event.target.value))} /><span className="muted">{locale === "uk" ? "Від 3 до 15" : "From 3 to 15"}</span></label>
       <label className="row"><input type="checkbox" checked={fillToSix} onChange={(e) => setFillToSix(e.target.checked)} />{locale === "uk" ? "Добрати персонажів до шести для 4–5 гравців" : "Fill to six characters with 4–5 players"}</label>
+      <label className="row"><input type="checkbox" checked={forceProfessionFirstRound} onChange={(e) => setForceProfessionFirstRound(e.target.checked)} />{locale === "uk" ? "У першому раунді обов'язково відкривати Професію" : "Force Profession in round 1"}</label>
+      <span className="muted">{locale === "uk" ? "Вимкніть, щоб гравці з першого раунду самі обирали будь-яку свою карту." : "Turn off to let players choose any of their cards from round 1."}</span>
       <div className="grid two">
         <label>{locale === "uk" ? "Фінал" : "Final"}<select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}><option value="base">Base</option><option value="survival-story">Survival Story</option></select></label>
         <label>{locale === "uk" ? "Мета" : "Goal"}<select value={goal} onChange={(e) => setGoal(e.target.value as typeof goal)}><option value="salvation">Salvation</option><option value="revival">Revival</option></select></label>
