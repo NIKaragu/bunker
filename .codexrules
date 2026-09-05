@@ -1,0 +1,11 @@
+# Context limit
+
+For every task, inspect only the files and folders directly required by the current task.
+
+- Start with the user request, explicitly mentioned files, exact task paths, and the nearest governing instructions.
+- Do not scan or recursively enumerate the whole repository, system folders, user directories, `.git`, build outputs, dependency folders, caches, or unrelated components.
+- Do not inspect both frontend and backend by default. Open the other component only when a direct dependency, shared contract, acceptance criterion, or observed error requires it.
+- Expand context one specific file or folder at a time. Before expanding, identify the concrete reason the additional path is needed.
+- Prefer targeted searches and narrow file reads over broad discovery commands.
+- Stop reading once enough evidence is available to complete or review the current atomic task.
+- In the final handoff, mention any paths inspected outside the initial task scope and why they were required.

@@ -1,6 +1,6 @@
 # Bunker delivery
 
-Current authorization: initialize and verify the development workflow. Product implementation is a later task. Treat `BUNKER_CODEX_MASTER_PROMPT.md` as product requirements, not permission to start every task it contains.
+Current authorization: implement and verify the complete MVP defined in `BUNKER_CODEX_MASTER_PROMPT.md` through the development workflow. Treat that document as product requirements and execute it in bounded, reviewable slices.
 
 Read `docs/DEV_LOOP.md` and `.agents/skills/bunker-mvp-delivery/SKILL.md` for development slices. Product decisions are Ukrainian in `docs/DECISIONS.md`; code identifiers and commits are English. The current directory layout deliberately uses `frontend/` and `backend/` instead of `apps/web` and `apps/server`.
 
