@@ -49,7 +49,10 @@ type SessionRecord = {
   connected: boolean;
   reconnectDeadline: number | null;
   reconnectJob: unknown | undefined;
+  socketIds: Set<string>;
 };
+
+export type RoomChangeListener = (roomId: string, invalidated: boolean) => void;
 
 type FinalView = {
   mode: "base" | "survival-story";
@@ -122,6 +125,7 @@ export class BunkerService {
   private readonly sessionsByToken = new Map<string, string>();
   private readonly rooms = new Map<string, RoomRecord>();
   private readonly commandWindows = new Map<string, number[]>();
+  private readonly roomChangeListeners = new Set<RoomChangeListener>();
   private accepting = true;
 
   public constructor(private readonly config: ServerConfig, private readonly scheduler: Scheduler) {}
@@ -145,7 +149,8 @@ export class BunkerService {
       connected: true,
       reconnectDeadline: null,
       roomId: undefined,
-      reconnectJob: undefined
+      reconnectJob: undefined,
+      socketIds: new Set()
     };
     this.sessions.set(sessionId, session);
     this.sessionsByToken.set(reconnectToken, sessionId);
@@ -179,6 +184,7 @@ export class BunkerService {
     if (patch.nickname !== undefined) session.profile.nickname = patch.nickname;
     if (patch.locale !== undefined) session.profile.locale = patch.locale;
     if (patch.avatar !== undefined) session.profile.avatar = patch.avatar;
+    this.touchRoom(session.roomId);
     return { profile: clone(session.profile) };
   }
 
@@ -214,6 +220,7 @@ export class BunkerService {
     };
     this.rooms.set(roomId, room);
     session.roomId = roomId;
+    this.notifyRoomChanged(roomId);
     return this.roomSnapshot(room, session);
   }
 
@@ -258,6 +265,7 @@ export class BunkerService {
       if (entry) entry.roomId = undefined;
     }
     this.rooms.delete(roomId);
+    this.notifyRoomChanged(roomId, true);
   }
 
   public currentRoom(sessionId: string): object {
@@ -266,8 +274,24 @@ export class BunkerService {
     return this.roomSnapshot(this.requireRoom(session.roomId), session);
   }
 
-  public disconnect(sessionId: string): void {
+  public connectSocket(sessionId: string, socketId: string): string | undefined {
     const session = this.requireSession(sessionId);
+    const wasDisconnected = !session.connected || session.reconnectDeadline !== null;
+    session.socketIds.add(socketId);
+    if (session.reconnectJob) this.scheduler.clear(session.reconnectJob);
+    session.connected = true;
+    session.reconnectDeadline = null;
+    session.reconnectJob = undefined;
+    session.expiresAt = this.now + this.config.sessionTtlMs;
+    if (wasDisconnected) this.touchRoom(session.roomId);
+    return session.roomId;
+  }
+
+  public disconnect(sessionId: string, socketId?: string): void {
+    const session = this.requireSession(sessionId);
+    if (socketId === undefined) session.socketIds.clear();
+    else session.socketIds.delete(socketId);
+    if (session.socketIds.size > 0) return;
     if (!session.connected) return;
     session.connected = false;
     session.reconnectDeadline = this.now + this.config.sessionGraceMs;
@@ -288,13 +312,14 @@ export class BunkerService {
     const session = this.requireSession(sessionId);
     if (!session.roomId || payload.roomId !== session.roomId) throw new BunkerError("FORBIDDEN");
     const room = this.requireRoom(session.roomId);
+    if (payload.protocolVersion !== PROTOCOL_VERSION) throw new BunkerError("UNSUPPORTED_PROTOCOL");
+    if (name === "room:resync") return { roomId: room.roomId, version: room.version, duplicate: false };
     const commandId = String(payload.commandId ?? "");
     const previous = room.processed.get(commandId);
     if (previous) {
       if (!previous.ok) throw new BunkerError(previous.code ?? "INTERNAL_ERROR");
       return { roomId: room.roomId, version: previous.version, duplicate: true };
     }
-    if (payload.protocolVersion !== PROTOCOL_VERSION) throw new BunkerError("UNSUPPORTED_PROTOCOL");
     if (payload.expectedVersion !== room.version) throw new BunkerError("STALE_STATE");
     try {
       this.applyCommand(room, session, name, payload);
@@ -313,6 +338,11 @@ export class BunkerService {
   }
 
   public sessionIdForToken(token: string): string { return this.sessionByToken(token).sessionId; }
+  public roomIdForSession(sessionId: string): string | undefined { return this.requireSession(sessionId).roomId; }
+  public onRoomChange(listener: RoomChangeListener): () => void {
+    this.roomChangeListeners.add(listener);
+    return () => this.roomChangeListeners.delete(listener);
+  }
   public stopAccepting(): void { this.accepting = false; }
   public shutdown(): void {
     this.accepting = false;
@@ -321,6 +351,7 @@ export class BunkerService {
       if (room.cleanupJob) this.scheduler.clear(room.cleanupJob);
     }
     for (const session of this.sessions.values()) if (session.reconnectJob) this.scheduler.clear(session.reconnectJob);
+    this.roomChangeListeners.clear();
   }
   public get stats(): { sessions: number; rooms: number; jobs: number } {
     let jobs = 0;
@@ -741,7 +772,7 @@ export class BunkerService {
   }
   private expireSession(sessionId: string): void {
     const session = this.sessions.get(sessionId);
-    if (!session) return;
+    if (!session || session.socketIds.size > 0) return;
     const room = session.roomId ? this.rooms.get(session.roomId) : undefined;
     if (room) {
       const wasHost = room.hostId === session.profile.participantId;
@@ -763,7 +794,11 @@ export class BunkerService {
     if (room.members.length > 0) return;
     if (room.cleanupJob) this.scheduler.clear(room.cleanupJob);
     room.cleanupJob = this.scheduler.set(this.config.emptyRoomTtlMs, () => {
-      if (room.members.length === 0) { this.cancelGameJobs(room); this.rooms.delete(room.roomId); }
+      if (room.members.length === 0) {
+        this.cancelGameJobs(room);
+        this.rooms.delete(room.roomId);
+        this.notifyRoomChanged(room.roomId, true);
+      }
     });
   }
 
@@ -794,7 +829,17 @@ export class BunkerService {
   private sessionByParticipant(room: RoomRecord, participantId: string): SessionRecord | undefined { return room.members.map((entry) => this.sessions.get(entry.sessionId)).find((entry) => entry?.profile.participantId === participantId); }
   private sessionDto(session: SessionRecord): object { return { sessionId: session.sessionId, reconnectToken: session.reconnectToken, profile: clone(session.profile), expiresAt: new Date(session.expiresAt).toISOString() }; }
   private touchRoom(roomId?: string): void { if (roomId) { const room = this.rooms.get(roomId); if (room) this.mutateRoom(room, false); } }
-  private mutateRoom(room: RoomRecord, resetReady: boolean): void { room.version += 1; room.updatedAt = this.now; if (resetReady) for (const member of room.members) member.ready = false; }
+  private mutateRoom(room: RoomRecord, resetReady: boolean): void {
+    room.version += 1;
+    room.updatedAt = this.now;
+    if (resetReady) for (const member of room.members) member.ready = false;
+    this.notifyRoomChanged(room.roomId);
+  }
+  private notifyRoomChanged(roomId: string, invalidated = false): void {
+    for (const listener of this.roomChangeListeners) {
+      try { listener(roomId, invalidated); } catch { /* observers must not break authoritative mutations */ }
+    }
+  }
   private assertAccepting(): void { if (!this.accepting) throw new BunkerError("BACKEND_UNAVAILABLE"); }
   private asBunkerError(error: unknown): BunkerError { if (error instanceof BunkerError) return error; const code = error instanceof Error && ["STALE_STATE", "INVALID_PHASE", "INVALID_TARGET", "INVALID_CARD", "FORBIDDEN", "VOTE_CLOSED"].includes(error.message) ? error.message as ErrorCode : "INTERNAL_ERROR"; return new BunkerError(code); }
   private get now(): number { return this.scheduler.now().getTime(); }

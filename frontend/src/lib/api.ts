@@ -16,6 +16,12 @@ export class ApiFailure extends Error {
   }
 }
 
+export const isTerminalSessionCode = (code: string): boolean =>
+  code.startsWith("SESSION_") || ["INVALID_RECONNECT_TOKEN", "UNAUTHORIZED", "AUTHENTICATION_REQUIRED"].includes(code);
+
+export const isTerminalSessionFailure = (reason: unknown): boolean =>
+  reason instanceof ApiFailure && isTerminalSessionCode(reason.code);
+
 const request = async <T>(path: string, init: RequestInit, parse: (value: unknown) => T, token?: string): Promise<T> => {
   const response = await fetch(`${baseUrl()}${path}`, {
     ...init,
@@ -32,11 +38,11 @@ const unwrap = <T>(result: { ok: boolean; data?: T; error?: { code: string; mess
 
 export const api = {
   createSession: (profile: ProfileInput): Promise<Session> => request("/api/v1/sessions", { method: "POST", body: JSON.stringify({ profile }) }, (v) => unwrap(sessionResponseSchema.parse(v))),
-  restoreSession: (reconnectToken: string): Promise<Session> => request("/api/v1/sessions/restore", { method: "POST", body: JSON.stringify({ reconnectToken }) }, (v) => unwrap(sessionResponseSchema.parse(v))),
+  restoreSession: (reconnectToken: string, signal?: AbortSignal): Promise<Session> => request("/api/v1/sessions/restore", { method: "POST", body: JSON.stringify({ reconnectToken }), signal }, (v) => unwrap(sessionResponseSchema.parse(v))),
   updateProfile: (token: string, patch: Partial<ProfileInput>) => request("/api/v1/profile", { method: "PATCH", body: JSON.stringify(patch) }, (v) => unwrap(profileResponseSchema.parse(v)), token),
-  listRooms: (token: string): Promise<RoomSummary[]> => request("/api/v1/rooms", { method: "GET" }, (v) => unwrap(roomsResponseSchema.parse(v)).rooms, token),
+  listRooms: (token: string, signal?: AbortSignal): Promise<RoomSummary[]> => request("/api/v1/rooms", { method: "GET", signal }, (v) => unwrap(roomsResponseSchema.parse(v)).rooms, token),
   createRoom: (token: string, input: unknown): Promise<RoomSnapshot> => request("/api/v1/rooms", { method: "POST", body: JSON.stringify(input) }, (v) => unwrap(roomResponseSchema.parse(v)), token),
   joinRoom: (token: string, roomId: string): Promise<RoomSnapshot> => request("/api/v1/rooms/join", { method: "POST", body: JSON.stringify({ roomId }) }, (v) => unwrap(roomResponseSchema.parse(v)), token),
-  currentRoom: (token: string): Promise<RoomSnapshot> => request("/api/v1/rooms/current", { method: "GET" }, (v) => unwrap(roomResponseSchema.parse(v)), token),
+  currentRoom: (token: string, signal?: AbortSignal): Promise<RoomSnapshot> => request("/api/v1/rooms/current", { method: "GET", signal }, (v) => unwrap(roomResponseSchema.parse(v)), token),
   validatePack: (token: string, pack: CustomPack) => request("/api/v1/packs/validate", { method: "POST", body: JSON.stringify({ pack, serializedBytes: new Blob([JSON.stringify(pack)]).size }) }, (v) => unwrap(packValidationResponseSchema.parse(v)), token),
 };

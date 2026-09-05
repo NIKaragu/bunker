@@ -7,11 +7,11 @@ import { t } from "@/lib/i18n";
 import { RulesDialog } from "./RulesDialog";
 
 export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) {
-  const { hydrated, hydrate, locale, setLocale, notice, connection } = useAppStore();
+  const { hydrated, bootstrap, hydrate, locale, setLocale, notice, connection } = useAppStore();
   const [rulesOpen, setRulesOpen] = useState(false);
-  useEffect(() => hydrate(), [hydrate]);
+  useEffect(() => { void hydrate(); }, [hydrate]);
   useEffect(() => { document.documentElement.lang = locale; }, [locale]);
-  if (!hydrated) return <main className="shell"><p className="muted">Loading local profile…</p></main>;
+  if (!hydrated) return <main className="shell"><section className="card stack"><p className="muted">{bootstrap === "error" ? "Could not restore the session." : "Restoring session…"}</p>{bootstrap === "error" && <button onClick={() => void hydrate()}>Retry</button>}</section></main>;
   return (
     <main className="shell">
       <header className="topbar">

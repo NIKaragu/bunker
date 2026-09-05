@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
-import { attachRealtime } from "./realtime.js";
+import { attachRealtime, detachRealtime } from "./realtime.js";
 import { systemScheduler } from "./scheduler.js";
 import { BunkerService } from "./service.js";
 
@@ -17,6 +17,7 @@ export const startServer = async () => {
     closing = true;
     service.stopAccepting();
     io.emit("server:shutdown", { reconnectAfterMs: 5_000 });
+    detachRealtime(io);
     await new Promise<void>((resolve) => io.close(() => resolve()));
     await new Promise<void>((resolve) => server.close(() => resolve()));
     service.shutdown();

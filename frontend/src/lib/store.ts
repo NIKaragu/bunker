@@ -4,11 +4,13 @@ import { create } from "zustand";
 import type { ProfileInput, RoomSnapshot, RoomSummary, Session } from "./client-types";
 import type { UiLocale } from "./i18n";
 import { readLocal, removeLocal, writeLocal } from "./storage";
+import { api, isTerminalSessionFailure } from "./api";
 
 export type ConnectionState = "idle" | "connected" | "reconnecting" | "offline" | "expired";
 
 type AppState = {
   hydrated: boolean;
+  bootstrap: "idle" | "restoring" | "ready" | "error";
   locale: UiLocale;
   profile: ProfileInput | null;
   session: Session | null;
@@ -17,7 +19,7 @@ type AppState = {
   connection: ConnectionState;
   notice: string | null;
   selectedCharacterId: string | null;
-  hydrate: () => void;
+  hydrate: () => Promise<void>;
   setLocale: (locale: UiLocale) => void;
   setProfile: (profile: ProfileInput) => void;
   setSession: (session: Session | null) => void;
@@ -29,8 +31,11 @@ type AppState = {
   clearSession: () => void;
 };
 
+let bootstrapGeneration = 0;
+
 export const useAppStore = create<AppState>((set, get) => ({
   hydrated: false,
+  bootstrap: "idle",
   locale: "uk",
   profile: null,
   session: null,
@@ -39,11 +44,33 @@ export const useAppStore = create<AppState>((set, get) => ({
   connection: "idle",
   notice: null,
   selectedCharacterId: null,
-  hydrate: () => {
+  hydrate: async () => {
+    const current = get().bootstrap;
+    if (current === "restoring" || current === "ready") return;
+    const generation = ++bootstrapGeneration;
     const profile = readLocal<ProfileInput>("profile");
-    const session = readLocal<Session>("session");
+    const persisted = readLocal<Session>("session");
     const locale = profile.value?.locale ?? "uk";
-    set({ hydrated: true, profile: profile.value ?? null, session: session.value ?? null, locale, notice: !profile.ok || !session.ok ? "Local storage is unavailable; changes will last for this tab." : null });
+    const storageNotice = !profile.ok || !persisted.ok ? "Local storage is unavailable; changes will last for this tab." : null;
+    set({ hydrated: false, bootstrap: "restoring", profile: profile.value ?? null, session: null, locale, notice: storageNotice });
+    if (!persisted.value) {
+      if (generation === bootstrapGeneration) set({ hydrated: true, bootstrap: "ready" });
+      return;
+    }
+    try {
+      const restored = await api.restoreSession(persisted.value.reconnectToken);
+      if (generation !== bootstrapGeneration) return;
+      const stored = writeLocal("session", restored);
+      set({ hydrated: true, bootstrap: "ready", session: restored, profile: restored.profile, locale: restored.profile.locale, notice: stored.ok ? storageNotice : stored.reason });
+    } catch (reason) {
+      if (generation !== bootstrapGeneration) return;
+      if (isTerminalSessionFailure(reason)) {
+        removeLocal("session");
+        set({ hydrated: true, bootstrap: "ready", session: null, room: null, connection: "expired", notice: reason instanceof Error ? reason.message : "Session expired" });
+      } else {
+        set({ hydrated: false, bootstrap: "error", notice: reason instanceof Error ? reason.message : "Could not restore session" });
+      }
+    }
   },
   setLocale: (locale) => {
     const profile = get().profile;
@@ -60,13 +87,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ session });
   },
   setRooms: (rooms) => set({ rooms }),
-  setRoom: (room) => set({ room, selectedCharacterId: room?.game?.viewer.role === "participant" ? room.game.viewer.privateState.controlledCharacters[0]?.characterId ?? null : null }),
+  setRoom: (room) => set((state) => {
+    if (room && state.room?.roomId === room.roomId && room.version < state.room.version) return state;
+    const controlled = room?.game?.viewer.role === "participant" ? room.game.viewer.privateState.controlledCharacters : [];
+    const selectedCharacterId = state.selectedCharacterId && controlled.some((item) => item.characterId === state.selectedCharacterId)
+      ? state.selectedCharacterId
+      : controlled[0]?.characterId ?? null;
+    return { room, selectedCharacterId };
+  }),
   setConnection: (connection) => set({ connection }),
   setNotice: (notice) => set({ notice }),
   selectCharacter: (selectedCharacterId) => set({ selectedCharacterId }),
   clearSession: () => {
+    bootstrapGeneration += 1;
     removeLocal("session");
-    set({ session: null, room: null, connection: "expired" });
+    set({ hydrated: true, bootstrap: "ready", session: null, room: null, connection: "expired" });
   },
 }));
 
