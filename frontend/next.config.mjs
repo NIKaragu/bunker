@@ -11,6 +11,7 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   // output: "standalone",
+  outputFileTracingRoot: path.join(__dirname, "../"),
   transpilePackages: ["@bunker/contracts"],
   distDir: process.env.NEXT_DIST_DIR || ".next",
 };
