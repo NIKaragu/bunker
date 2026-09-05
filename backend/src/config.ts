@@ -1,5 +1,5 @@
 /** Local dev runs the frontend on 3000 and its second instance on 3001; 3002 is kept for a third tab. */
-const DEFAULT_CORS_ORIGINS = "https://bunker-nikki-8b90.vercel.app/";
+const DEFAULT_CORS_ORIGINS = "https://bunker-nikki-8b90.vercel.app/,https://bunker-hazel-eight.vercel.app/";
 
 const originList = (raw: string | undefined): string[] => {
   const origins = (raw ?? DEFAULT_CORS_ORIGINS).split(",").map((value) => value.trim()).filter(Boolean);
