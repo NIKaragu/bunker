@@ -18,7 +18,7 @@ export type ServerConfig = Readonly<{
 }>;
 
 export const loadConfig = (env: NodeJS.ProcessEnv = process.env): ServerConfig => {
-  const origins = (env.CORS_ORIGINS ?? "http://localhost:3000").split(",").map((value) => value.trim()).filter(Boolean);
+  const origins = ("http://localhost:3000,http://localhost:3001,http://localhost:3002").split(",").map((value) => value.trim()).filter(Boolean);
   if (origins.length === 0 || origins.includes("*")) throw new Error("CORS_ORIGINS must be an explicit allowlist");
   return {
     port: integer(env.PORT, 4000, 1, 65_535),
