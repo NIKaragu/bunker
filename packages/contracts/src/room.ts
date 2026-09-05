@@ -6,7 +6,7 @@ import { avatarSchema, profileSchema } from "./profile.js";
 
 export const roomStatusSchema = z.enum(["lobby", "in-game", "post-game", "closed"]);
 export const roomParticipantSchema = z.object({
-  participantId: participantIdSchema, nickname: z.string().min(2).max(32), avatar: avatarSchema,
+  participantId: participantIdSchema, nickname: z.string().min(2).max(32), avatar: avatarSchema.optional(),
   role: z.enum(["host", "participant", "spectator"]), ready: z.boolean(), connected: z.boolean(),
   reconnectDeadline: isoTimestampSchema.nullable(), controlledCharacterCount: z.number().int().min(0).max(2)
 }).strict();

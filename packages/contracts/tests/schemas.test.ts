@@ -7,6 +7,7 @@ import {
   errorCodeSchema,
   finalStateSchema,
   gameSettingsSchema,
+  profileInputSchema,
   publicGameSnapshotSchema,
   roomSnapshotSchema,
   socketHandshakeAuthSchema,
@@ -28,6 +29,10 @@ describe("security boundaries", () => {
 
   it("rejects oversized uploaded avatars", () => {
     expect(uploadedAvatarSchema.safeParse({ kind: "uploaded", mimeType: "image/png", bytes: 256_001, dataUrl: "data:image/png;base64,AAAA" }).success).toBe(false);
+  });
+
+  it("accepts a profile without an avatar", () => {
+    expect(profileInputSchema.parse({ nickname: "No Avatar", locale: "en" })).toEqual({ nickname: "No Avatar", locale: "en" });
   });
 
   it("requires the exact protocol version in socket auth", () => {

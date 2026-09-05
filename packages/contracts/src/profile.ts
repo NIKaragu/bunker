@@ -15,7 +15,7 @@ export const uploadedAvatarSchema = z.object({
 }).strict();
 
 export const avatarSchema = z.discriminatedUnion("kind", [diceBearAvatarSchema, uploadedAvatarSchema]);
-export const profileInputSchema = z.object({ nickname: nicknameSchema, locale: localeSchema, avatar: avatarSchema }).strict();
+export const profileInputSchema = z.object({ nickname: nicknameSchema, locale: localeSchema, avatar: avatarSchema.optional() }).strict();
 export const profileSchema = profileInputSchema.extend({ participantId: participantIdSchema }).strict();
 export const sessionSchema = z.object({
   sessionId: sessionIdSchema,

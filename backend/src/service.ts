@@ -768,7 +768,7 @@ export class BunkerService {
   }
 
   private verifyAvatar(avatar: ReturnType<typeof profileInputSchema.parse>["avatar"]): void {
-    if (avatar.kind !== "uploaded") return;
+    if (!avatar || avatar.kind !== "uploaded") return;
     const bytes = Buffer.from(avatar.dataUrl.slice(avatar.dataUrl.indexOf(",") + 1), "base64");
     if (bytes.length !== avatar.bytes || bytes.length > 256_000) throw new BunkerError("INVALID_PAYLOAD", "Avatar byte count mismatch");
     const signature = bytes.subarray(0, 12).toString("hex");

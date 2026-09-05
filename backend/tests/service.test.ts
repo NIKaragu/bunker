@@ -24,6 +24,13 @@ const make = () => {
 };
 
 describe("BunkerService", () => {
+  test("creates a session without an avatar", () => {
+    const { service } = make();
+    const session = service.createSession({ nickname: "No Avatar", locale: "en" }) as { profile: { nickname: string; avatar?: unknown } };
+
+    expect(session.profile.nickname).toBe("No Avatar");
+    expect(session.profile).not.toHaveProperty("avatar");
+  });
   test("reserves normalized nicknames until reconnect grace expires", () => {
     const { service, clock } = make();
     const first = service.createSession({ ...profile(1), nickname: "  Alice   Smith " }) as { sessionId: string; reconnectToken: string };

@@ -20,7 +20,7 @@ export function Onboarding() {
     const result = profileInputSchema.safeParse({
       nickname,
       locale,
-      avatar: uploaded ?? { kind: "dicebear", style: "initials", seed: nickname || "Bunker" },
+      ...(uploaded ? { avatar: uploaded } : {}),
     });
     if (!result.success) {
       setError(result.error.issues[0]?.message ?? "Check the profile fields.");
@@ -58,7 +58,7 @@ export function Onboarding() {
             {(["uk", "en"] as const).map((value) => <label className="row" key={value}><input type="radio" name="locale" checked={locale === value} onChange={() => setLocale(value)} />{value === "uk" ? "Українська" : "English"}</label>)}
           </div>
         </fieldset>
-        <label>{locale === "uk" ? "Власне фото (PNG, JPEG, WebP; до 256 КБ після стиснення)" : "Custom image (PNG, JPEG, WebP; 256 KB after compression)"}
+        <label>{locale === "uk" ? "Власне фото — необов’язково (PNG, JPEG, WebP; до 256 КБ після стиснення)" : "Custom image — optional (PNG, JPEG, WebP; 256 KB after compression)"}
           <input type="file" accept="image/png,image/jpeg,image/webp" onChange={async (event) => {
             const file = event.target.files?.[0];
             if (!file) return;
